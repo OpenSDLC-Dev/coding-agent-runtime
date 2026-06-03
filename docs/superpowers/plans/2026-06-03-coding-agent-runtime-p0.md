@@ -77,7 +77,7 @@ packages:
   "type": "module",
   "packageManager": "pnpm@10.34.1",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "pnpm --filter @app/runtime dev",
