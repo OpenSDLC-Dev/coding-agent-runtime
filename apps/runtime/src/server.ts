@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RuntimeConfig } from "./agent/config.js";
@@ -43,7 +44,13 @@ export function createServer(deps: ServerDeps): Hono {
           });
         }
       } catch (err) {
-        await stream.writeSSE({ event: "error", data: JSON.stringify({ message: String(err) }) });
+        // 服务端记全量错误，客户端只回通用 message + correlationId（不泄露内部细节）。
+        const correlationId = randomUUID();
+        console.error(`[/sessions] error correlationId=${correlationId}:`, err);
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message: "internal error", correlationId }),
+        });
       }
     });
   });

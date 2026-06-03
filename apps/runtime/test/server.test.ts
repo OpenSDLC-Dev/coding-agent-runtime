@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { QueryFn } from "../src/agent/runtime.js";
 import { createServer } from "../src/server.js";
 import { fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
 
@@ -45,5 +46,24 @@ describe("createServer", () => {
     expect(text).toContain("event: init");
     expect(text).toContain("event: assistant");
     expect(text).toContain("event: result");
+  });
+
+  it("POST /sessions maps a runtime error to a generic SSE error (no internal detail leaked)", async () => {
+    const throwing: QueryFn = () => {
+      throw new Error("boom secret internal detail");
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const app = createServer({ config: testConfig, queryFn: throwing });
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    });
+    const text = await res.text();
+    errSpy.mockRestore();
+    expect(text).toContain("event: error");
+    expect(text).toContain("internal error");
+    expect(text).toContain("correlationId");
+    expect(text).not.toContain("boom secret internal detail");
   });
 });

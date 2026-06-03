@@ -14,6 +14,7 @@ describe("loadConfig", () => {
       PORT: "8080",
       INCLUDE_PARTIAL_MESSAGES: "1",
       JAEGER_BASE_URL: "http://localhost:16686",
+      RUNTIME_HOSTNAME: "0.0.0.0",
     });
     expect(cfg).toEqual({
       anthropicApiKey: "sk-test",
@@ -23,6 +24,7 @@ describe("loadConfig", () => {
       jaegerBaseUrl: "http://localhost:16686",
       port: 8080,
       cwd: "/workspace",
+      hostname: "0.0.0.0",
     });
   });
 
@@ -33,5 +35,6 @@ describe("loadConfig", () => {
     expect(cfg.includePartial).toBe(false);
     expect(cfg.anthropicBaseUrl).toBeUndefined();
     expect(cfg.defaultModel).toBeUndefined();
+    expect(cfg.hostname).toBe("127.0.0.1");
   });
 });

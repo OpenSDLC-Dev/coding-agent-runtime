@@ -1,5 +1,6 @@
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it } from "vitest";
-import { runTurn } from "../src/agent/runtime.js";
+import { type QueryFn, runTurn } from "../src/agent/runtime.js";
 import { fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
 
 describe("runTurn", () => {
@@ -56,5 +57,21 @@ describe("runTurn", () => {
     }
     const err = events.find((e) => e.event === "error");
     expect(err?.data).toMatchObject({ subtype: "error_during_execution", errors: ["boom"] });
+  });
+
+  it("passes the P0 security backstop options to query", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, capturing)) {
+      // drain
+    }
+    expect(captured?.permissionMode).toBe("bypassPermissions");
+    expect(captured?.allowDangerouslySkipPermissions).toBe(true);
+    expect(captured?.disallowedTools).toEqual(
+      expect.arrayContaining(["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)"]),
+    );
   });
 });

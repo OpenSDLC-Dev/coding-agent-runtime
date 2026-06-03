@@ -5,8 +5,8 @@ import { createServer } from "./server.js";
 const config = loadConfig();
 const app = createServer({ config, version: process.env.npm_package_version });
 
-const server = serve({ fetch: app.fetch, port: config.port, hostname: "0.0.0.0" }, (info) => {
-  console.log(`runtime listening on http://0.0.0.0:${info.port}`);
+const server = serve({ fetch: app.fetch, port: config.port, hostname: config.hostname }, (info) => {
+  console.log(`runtime listening on http://${config.hostname}:${info.port}`);
 });
 
 const shutdown = (): void => {

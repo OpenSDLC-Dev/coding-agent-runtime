@@ -70,6 +70,7 @@ ENV DISABLE_AUTOUPDATER=1 \
     CLAUDE_CONFIG_DIR=/claude-config \
     HOME=/home/app \
     PORT=8080 \
+    RUNTIME_HOSTNAME=0.0.0.0 \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
     PATH=/home/app/.local/share/pnpm:/home/app/.local/bin:/usr/local/bin:$PATH
 

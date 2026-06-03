@@ -100,6 +100,9 @@ export async function* runTurn(
     model: input.model ?? cfg.defaultModel,
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
+    // P0 安全兜底：deny 永远赢，挡住联网/提权/危险删除。这是不依赖文件设置的硬兜底；
+    // 完整的 PreToolUse Bash 白名单（解析 && | ; 拆分、剥包装器）仍排在 P3（spec §6）。
+    disallowedTools: ["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(rm -rf:*)"],
     systemPrompt: { type: "preset", preset: "claude_code" },
     settingSources: ["user", "project"],
     includePartialMessages: cfg.includePartial,

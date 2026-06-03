@@ -10,6 +10,7 @@ export const testConfig: RuntimeConfig = {
   jaegerBaseUrl: undefined,
   port: 8080,
   cwd: "/workspace",
+  hostname: "127.0.0.1",
 };
 
 // 一个成功单轮的最小消息序列：init -> assistant(text + tool_use) -> user(tool_result) -> result(success)
