@@ -1,0 +1,5 @@
+# 容器内执行的文件必须保持 LF——Windows checkout（core.autocrlf=true）若转成 CRLF
+# 会破坏容器入口的 shebang 解析与 Dockerfile。其余文件交由 git 默认处理。
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf

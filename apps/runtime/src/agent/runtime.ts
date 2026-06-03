@@ -1,0 +1,117 @@
+import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
+import type { RuntimeConfig } from "./config.js";
+
+export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error";
+
+export interface SseEvent {
+  event: SseEventName;
+  data: Record<string, unknown>;
+  id?: string;
+}
+
+export type QueryFn = (args: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+
+export interface RunTurnInput {
+  prompt: string;
+  model?: string;
+  resumeId?: string;
+}
+
+// 把 process.env（值可能 undefined）规整为 query() 需要的 Record<string,string>，再叠加运行时覆盖。
+function buildChildEnv(cfg: RuntimeConfig): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) env[k] = v;
+  }
+  env.ANTHROPIC_API_KEY = cfg.anthropicApiKey;
+  if (cfg.anthropicBaseUrl) env.ANTHROPIC_BASE_URL = cfg.anthropicBaseUrl;
+  env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR ?? "/claude-config";
+  env.DISABLE_AUTOUPDATER = "1";
+  return env;
+}
+
+function mapMessage(m: SDKMessage): SseEvent | null {
+  switch (m.type) {
+    case "system":
+      if (m.subtype === "init") {
+        return {
+          event: "init",
+          id: m.uuid,
+          data: { sessionId: m.session_id, model: m.model, cwd: m.cwd, tools: m.tools },
+        };
+      }
+      return null;
+    case "assistant": {
+      const text: string[] = [];
+      const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
+      for (const block of m.message.content) {
+        if (block.type === "text") {
+          text.push(block.text);
+        } else if (block.type === "tool_use") {
+          toolUses.push({ id: block.id, name: block.name, input: block.input });
+        }
+      }
+      return { event: "assistant", id: m.uuid, data: { text: text.join(""), toolUses } };
+    }
+    case "user": {
+      const content = m.message.content;
+      if (!Array.isArray(content)) return null;
+      const results: Array<{ toolUseId: string; isError: boolean }> = [];
+      for (const block of content) {
+        if (block.type === "tool_result") {
+          results.push({ toolUseId: block.tool_use_id, isError: block.is_error ?? false });
+        }
+      }
+      return results.length > 0 ? { event: "tool_result", data: { results } } : null;
+    }
+    case "result":
+      if (m.subtype === "success") {
+        return {
+          event: "result",
+          id: m.uuid,
+          data: {
+            sessionId: m.session_id,
+            usage: m.usage,
+            total_cost_usd: m.total_cost_usd,
+            modelUsage: m.modelUsage,
+            num_turns: m.num_turns,
+            is_error: m.is_error,
+          },
+        };
+      }
+      return {
+        event: "error",
+        id: m.uuid,
+        data: { subtype: m.subtype, errors: m.errors },
+      };
+    default:
+      return null;
+  }
+}
+
+export async function* runTurn(
+  input: RunTurnInput,
+  cfg: RuntimeConfig,
+  queryFn: QueryFn = defaultQuery,
+): AsyncGenerator<SseEvent> {
+  const options: Options = {
+    cwd: cfg.cwd,
+    model: input.model ?? cfg.defaultModel,
+    permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
+    // P0 安全兜底：deny 永远赢，挡住联网/提权/危险删除。这是不依赖文件设置的硬兜底；
+    // 完整的 PreToolUse Bash 白名单（解析 && | ; 拆分、剥包装器）仍排在 P3（spec §6）。
+    disallowedTools: ["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(rm -rf:*)"],
+    systemPrompt: { type: "preset", preset: "claude_code" },
+    settingSources: ["user", "project"],
+    includePartialMessages: cfg.includePartial,
+    env: buildChildEnv(cfg),
+    ...(input.resumeId ? { resume: input.resumeId } : {}),
+  };
+
+  for await (const m of queryFn({ prompt: input.prompt, options })) {
+    const evt = mapMessage(m);
+    if (evt) yield evt;
+  }
+}
