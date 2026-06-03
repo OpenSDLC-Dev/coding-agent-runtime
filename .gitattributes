@@ -1,5 +1,6 @@
-# 容器内执行的文件必须保持 LF——Windows checkout（core.autocrlf=true）若转成 CRLF
-# 会破坏容器入口的 shebang 解析与 Dockerfile。其余文件交由 git 默认处理。
+# 全仓统一 LF 行尾。eol=lf 优先级高于 core.autocrlf，避免 Windows checkout 转 CRLF
+# 导致 biome 失败、容器入口 shebang 损坏。二进制由 text=auto 自动判定不受影响。
+* text=auto eol=lf
 *.sh text eol=lf
 entrypoint.sh text eol=lf
 Dockerfile text eol=lf
