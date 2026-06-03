@@ -1,0 +1,22 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 环境 / 密钥（ANTHROPIC_API_KEY、GH_TOKEN 等）
+.env
+.env.*
+!.env.example
+
+# 构建产物
+dist/
+build/
+*.tsbuildinfo
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
