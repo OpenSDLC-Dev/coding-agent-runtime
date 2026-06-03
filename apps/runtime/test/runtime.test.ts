@@ -25,7 +25,15 @@ describe("runTurn", () => {
 
   it("maps a result error subtype into an error event", async () => {
     const errMsgs = [
-      { type: "system", subtype: "init", uuid: "i", session_id: "s", model: "m", cwd: "/workspace", tools: [] },
+      {
+        type: "system",
+        subtype: "init",
+        uuid: "i",
+        session_id: "s",
+        model: "m",
+        cwd: "/workspace",
+        tools: [],
+      },
       {
         type: "result",
         subtype: "error_during_execution",
