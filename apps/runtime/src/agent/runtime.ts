@@ -2,7 +2,7 @@ import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "./config.js";
 
-export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error";
+export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error" | "aborted";
 
 export interface SseEvent {
   event: SseEventName;
@@ -16,6 +16,7 @@ export interface RunTurnInput {
   prompt: string;
   model?: string;
   resumeId?: string;
+  abortController?: AbortController;
 }
 
 // 把 process.env（值可能 undefined）规整为 query() 需要的 Record<string,string>，再叠加运行时覆盖。
@@ -107,6 +108,10 @@ export async function* runTurn(
     settingSources: ["user", "project"],
     includePartialMessages: cfg.includePartial,
     env: buildChildEnv(cfg),
+    abortController: input.abortController,
+    // SDK/CLI 解耦：指向独立安装的 Claude Code CLI 原生二进制（设置时 SDK 直接 spawn 它，
+    // 走 stdio/stream-json）。未设则 SDK 用自带平台二进制。
+    ...(cfg.claudeCliPath ? { pathToClaudeCodeExecutable: cfg.claudeCliPath } : {}),
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
 

@@ -6,11 +6,14 @@ export const testConfig: RuntimeConfig = {
   anthropicApiKey: "sk-test",
   anthropicBaseUrl: undefined,
   defaultModel: "MiniMax-M3",
+  allowedModels: undefined,
   includePartial: false,
   jaegerBaseUrl: undefined,
+  corsOrigins: "*",
   port: 8080,
   cwd: "/workspace",
   hostname: "127.0.0.1",
+  claudeCliPath: undefined,
 };
 
 // 一个成功单轮的最小消息序列：init -> assistant(text + tool_use) -> user(tool_result) -> result(success)
@@ -69,4 +72,11 @@ export function fakeQueryFn(messages: SDKMessage[]): QueryFn {
     (async function* () {
       for (const m of messages) yield m;
     })();
+}
+
+// 把一次 app.request 的 SSE 响应读成事件名数组 + 原文，便于断言。
+export async function collectSse(res: Response): Promise<{ text: string; events: string[] }> {
+  const text = await res.text();
+  const events = [...text.matchAll(/^event: (.+)$/gm)].map((m) => m[1] as string);
+  return { text, events };
 }

@@ -1,8 +1,14 @@
 # Coding Agent Runtime — 设计文档
 
 - 日期：2026-06-03
-- 状态：草案，待用户评审
+- 状态：已评审；P0/P1 已实现
 - 范围（本期）：自包含的 **runtime 容器**（第①层）+ **独立测试界面 Playground**。多容器编排/暖池（第②层）列为后期，仅做接口预留。
+
+> **架构修订（2026-06-04）：SDK 与 Claude Code CLI 解耦。**
+> 原方案"用 SDK 自带的内置 CLI"改为：容器**独立安装** Claude Code CLI 原生二进制（`@anthropic-ai/claude-code`，Docker build ARG `CLAUDE_CODE_VERSION` 钉版本，可独立于 SDK bump——CLI 更新更频繁），由 SDK 的 `pathToClaudeCodeExecutable`（运行时 `RUNTIME_CLAUDE_CLI_PATH`）指向它；SDK 与 CLI 本就经 **stdio / stream-json** 通信。
+> SDK **自带的平台二进制不打进镜像**（`pnpm install --no-optional` 跳过其 `@anthropic-ai/claude-agent-sdk-<platform>` optional 平台包）；因容器内 `pathToClaudeCodeExecutable` 恒设，SDK 永不解析自带二进制（源码确认惰性解析）。本地非容器留空时回退 SDK 自带。
+> `systemPrompt: { type:'preset', preset:'claude_code' }` 不变（由独立 CLI 解析，行为一致）。
+> 本修订取代下文中"用 SDK 自带 CLI / 不单独装二进制 / 靠 pin SDK 版本来 pin CLI"的相关表述（§1.3、§3.2、§5、§8.1、§11#3、§13#7）。
 
 ---
 
@@ -29,7 +35,7 @@
 ### 1.3 已锁定决策
 | 维度 | 决策 |
 |---|---|
-| 语言/驱动 | TypeScript + `@anthropic-ai/claude-agent-sdk`，**用 SDK 自带的内置 CLI**（默认 `pathToClaudeCodeExecutable`，不单独装二进制；靠 pin SDK 版本来 pin CLI） |
+| 语言/驱动 | TypeScript + `@anthropic-ai/claude-agent-sdk`；**SDK 与 CLI 解耦**：容器独立安装 Claude Code CLI 原生二进制（`@anthropic-ai/claude-code`，ARG 钉版本，独立 bump），经 `pathToClaudeCodeExecutable` 驱动；SDK 自带二进制经 `--no-optional` 排除（见顶部架构修订） |
 | 容器编码工具 | 镜像内置 `git` / `gh` / `node` / `python 3.12`(由 uv 管理) / `uv`，供 agent 经 Bash 编码；`gh/git` 复用本机认证经 `GH_TOKEN`(.env) |
 | 容器内 agent 指令 | entrypoint 初始化时把固定 guidelines 写入 `$CLAUDE_CONFIG_DIR/CLAUDE.md`（user-level）；`settingSources:['user','project']`（user=我们的固定 guidelines，project=挂载仓库自带 `./CLAUDE.md`，合并）+ `systemPrompt` 用 `claude_code` preset |
 | 会话执行模型 | **无状态每轮 `query({ resume })`**，状态在挂载的 `CLAUDE_CONFIG_DIR` |
@@ -281,7 +287,7 @@ opensdlc/coding-agent-runtime/
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | **P0 骨架** | pnpm workspace + Biome/vitest/tsconfig；apps/runtime：Hono + healthz/config + Dockerfile（SDK 自带 CLI + git/gh/uv/py3.12）+ entrypoint（写 `$CLAUDE_CONFIG_DIR/CLAUDE.md`）+ `runTurn` 单轮（`systemPrompt` preset + `settingSources:['user','project']`）+ SSE 出流 | 本地 `docker run` 后 `POST /sessions` 能流式返回 agent 输出；容器内 agent 遵循固定 guidelines |
-| **P1 多轮+会话+界面骨架** | 每轮 resume、Session Registry、`/sessions/*` 全套、OpenAPI+Swagger UI+CORS；`ANTHROPIC_BASE_URL/KEY/model` 可配（MiniMax 跑通）；apps/web：连接+spec 查看+SSE 对话 | 多轮上下文连续；MiniMax-M3 完成真实任务；界面能连容器、看 spec、对话 |
+| **P1 多轮+会话+界面骨架** ✅已实现 | 每轮 resume、Session Registry、`/sessions/*` 全套、OpenAPI+Swagger UI+CORS；`ANTHROPIC_BASE_URL/KEY/model` 可配（MiniMax 跑通）；apps/web：连接+spec 查看+SSE 对话 | 多轮上下文连续；MiniMax-M3 完成真实任务；界面能连容器、看 spec、对话 |
 | **P2 可观测性+界面 trace** | telemetry.ts、session/turn span、TRACEPARENT 注入、tool 树、usage→span、compose 后端栈；SSE/响应头透出 traceId；界面深链/内嵌 Jaeger | Jaeger 看到「turn→tool→llm_request」链路与 token；界面按 traceId 一键看 trace |
 | **P3 安全+韧性** | PreToolUse Bash 白名单 + disallowedTools + egress 白名单 + 容器硬化；Last-Event-ID 重放/心跳；abort 接线 | 越权 bash 被拦并回有意义信息；断线可重连；中止生效 |
 | **P4（可选）规模化** | 第②层编排：控制面 spawn 一会话一容器、动态挂载、生命周期/暖池/路由 | 多会话并发各自隔离；暖池冷启动秒级 |
@@ -296,5 +302,5 @@ opensdlc/coding-agent-runtime/
 3. 用单 string prompt（非 async-iterable）驱动是否恢复完整 span 树 → 实测。
 4. `TRACEPARENT` 是否需同带 `TRACESTATE` 与 sampled 标志才被 CLI 采纳 → 隔离环境验证（不能在 SDK 主通道用 console）。
 5. 删除会话时挂载状态清理策略（保留/归档/删除）与 30 天自动清理的取舍。
-6. Scalar vs 直接复用 runtime `/docs` 的取舍（界面内嵌是否值得，或直接给链接）。
+6. Scalar vs 直接复用 runtime `/docs` 的取舍（界面内嵌是否值得，或直接给链接）。（**P1 决策**：界面用 iframe 内嵌 runtime 的 `/docs` + 直链，不引入 Scalar；后续如需再评估。）
 7. **自带 CLI 在容器 headless 下被 `query()` 驱动**是否稳定（含 stream-json 路径、resume）→ P0 实测；必要时回退到显式装 CLI + `pathToClaudeCodeExecutable`。
