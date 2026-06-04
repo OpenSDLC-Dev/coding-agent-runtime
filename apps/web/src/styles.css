@@ -1,0 +1,12 @@
+:root {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+}
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+}
