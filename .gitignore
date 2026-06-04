@@ -20,3 +20,6 @@ pnpm-debug.log*
 # 系统 / 编辑器
 .DS_Store
 Thumbs.db
+
+# docker-compose 运行态产物（bind mount 目标）
+.runtime/
