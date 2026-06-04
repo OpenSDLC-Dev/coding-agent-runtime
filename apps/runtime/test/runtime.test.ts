@@ -87,4 +87,32 @@ describe("runTurn", () => {
     }
     expect(captured?.abortController).toBe(ac);
   });
+
+  it("sets pathToClaudeCodeExecutable to the decoupled CLI when configured", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn(
+      { prompt: "hi" },
+      { ...testConfig, claudeCliPath: "/usr/local/bin/claude" },
+      capturing,
+    )) {
+      // drain
+    }
+    expect(captured?.pathToClaudeCodeExecutable).toBe("/usr/local/bin/claude");
+  });
+
+  it("leaves pathToClaudeCodeExecutable unset (SDK built-in CLI) when not configured", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, capturing)) {
+      // drain
+    }
+    expect(captured?.pathToClaudeCodeExecutable).toBeUndefined();
+  });
 });

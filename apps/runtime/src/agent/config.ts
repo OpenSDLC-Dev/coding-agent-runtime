@@ -9,6 +9,10 @@ export interface RuntimeConfig {
   port: number;
   cwd: string;
   hostname: string;
+  // 独立安装的 Claude Code CLI 原生二进制路径。设置后经 SDK 的 pathToClaudeCodeExecutable 驱动它
+  // （SDK 与 CLI 解耦：CLI 更新更频繁，可独立于 SDK 升级；二者经 stdio/stream-json 通信）。
+  // 留空 → 回退 SDK 自带的平台二进制（本地 dev 用）。容器内由 Dockerfile 设为独立 CLI。
+  claudeCliPath: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -35,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     cwd: env.RUNTIME_CWD || "/workspace",
     // 安全默认：仅绑回环；非隔离部署不会静默暴露。容器内由 Dockerfile 显式设 0.0.0.0（docker -p 需要）。
     hostname: env.RUNTIME_HOSTNAME || "127.0.0.1",
+    claudeCliPath: env.RUNTIME_CLAUDE_CLI_PATH || undefined,
   };
 }
 

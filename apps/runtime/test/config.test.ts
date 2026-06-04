@@ -17,6 +17,7 @@ describe("loadConfig", () => {
       INCLUDE_PARTIAL_MESSAGES: "1",
       JAEGER_BASE_URL: "http://localhost:16686",
       RUNTIME_HOSTNAME: "0.0.0.0",
+      RUNTIME_CLAUDE_CLI_PATH: "/usr/local/bin/claude",
     });
     expect(cfg).toEqual({
       anthropicApiKey: "sk-test",
@@ -29,6 +30,7 @@ describe("loadConfig", () => {
       port: 8080,
       cwd: "/workspace",
       hostname: "0.0.0.0",
+      claudeCliPath: "/usr/local/bin/claude",
     });
   });
 
@@ -42,6 +44,7 @@ describe("loadConfig", () => {
     expect(cfg.hostname).toBe("127.0.0.1");
     expect(cfg.allowedModels).toBeUndefined();
     expect(cfg.corsOrigins).toBe("*");
+    expect(cfg.claudeCliPath).toBeUndefined();
   });
 });
 

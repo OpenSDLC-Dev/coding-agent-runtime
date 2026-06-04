@@ -1,8 +1,14 @@
 # Coding Agent Runtime — 设计文档
 
 - 日期：2026-06-03
-- 状态：草案，待用户评审
+- 状态：已评审；P0/P1 已实现
 - 范围（本期）：自包含的 **runtime 容器**（第①层）+ **独立测试界面 Playground**。多容器编排/暖池（第②层）列为后期，仅做接口预留。
+
+> **架构修订（2026-06-04）：SDK 与 Claude Code CLI 解耦。**
+> 原方案"用 SDK 自带的内置 CLI"改为：容器**独立安装** Claude Code CLI 原生二进制（`@anthropic-ai/claude-code`，Docker build ARG `CLAUDE_CODE_VERSION` 钉版本，可独立于 SDK bump——CLI 更新更频繁），由 SDK 的 `pathToClaudeCodeExecutable`（运行时 `RUNTIME_CLAUDE_CLI_PATH`）指向它；SDK 与 CLI 本就经 **stdio / stream-json** 通信。
+> SDK **自带的平台二进制不打进镜像**（`pnpm install --no-optional` 跳过其 `@anthropic-ai/claude-agent-sdk-<platform>` optional 平台包）；因容器内 `pathToClaudeCodeExecutable` 恒设，SDK 永不解析自带二进制（源码确认惰性解析）。本地非容器留空时回退 SDK 自带。
+> `systemPrompt: { type:'preset', preset:'claude_code' }` 不变（由独立 CLI 解析，行为一致）。
+> 本修订取代下文中"用 SDK 自带 CLI / 不单独装二进制 / 靠 pin SDK 版本来 pin CLI"的相关表述（§1.3、§3.2、§5、§8.1、§11#3、§13#7）。
 
 ---
 
@@ -29,7 +35,7 @@
 ### 1.3 已锁定决策
 | 维度 | 决策 |
 |---|---|
-| 语言/驱动 | TypeScript + `@anthropic-ai/claude-agent-sdk`，**用 SDK 自带的内置 CLI**（默认 `pathToClaudeCodeExecutable`，不单独装二进制；靠 pin SDK 版本来 pin CLI） |
+| 语言/驱动 | TypeScript + `@anthropic-ai/claude-agent-sdk`；**SDK 与 CLI 解耦**：容器独立安装 Claude Code CLI 原生二进制（`@anthropic-ai/claude-code`，ARG 钉版本，独立 bump），经 `pathToClaudeCodeExecutable` 驱动；SDK 自带二进制经 `--no-optional` 排除（见顶部架构修订） |
 | 容器编码工具 | 镜像内置 `git` / `gh` / `node` / `python 3.12`(由 uv 管理) / `uv`，供 agent 经 Bash 编码；`gh/git` 复用本机认证经 `GH_TOKEN`(.env) |
 | 容器内 agent 指令 | entrypoint 初始化时把固定 guidelines 写入 `$CLAUDE_CONFIG_DIR/CLAUDE.md`（user-level）；`settingSources:['user','project']`（user=我们的固定 guidelines，project=挂载仓库自带 `./CLAUDE.md`，合并）+ `systemPrompt` 用 `claude_code` preset |
 | 会话执行模型 | **无状态每轮 `query({ resume })`**，状态在挂载的 `CLAUDE_CONFIG_DIR` |

@@ -109,6 +109,9 @@ export async function* runTurn(
     includePartialMessages: cfg.includePartial,
     env: buildChildEnv(cfg),
     abortController: input.abortController,
+    // SDK/CLI 解耦：指向独立安装的 Claude Code CLI 原生二进制（设置时 SDK 直接 spawn 它，
+    // 走 stdio/stream-json）。未设则 SDK 用自带平台二进制。
+    ...(cfg.claudeCliPath ? { pathToClaudeCodeExecutable: cfg.claudeCliPath } : {}),
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
 

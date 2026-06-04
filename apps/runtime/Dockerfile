@@ -36,6 +36,18 @@ RUN set -eux; \
     env UV_PYTHON_INSTALL_DIR=/opt/uv-python UV_PYTHON_BIN_DIR=/usr/local/bin uv python install 3.12 --default; \
     chmod -R a+rX /opt/uv-python
 
+# ---- 独立安装 Claude Code CLI（与 Agent SDK 解耦）----
+# SDK 与 CLI 经 stdio/stream-json 通信；CLI 更新更频繁，独立于 SDK 升级。
+# 这里全局装【独立】CLI 原生二进制，运行时由 SDK 的 pathToClaudeCodeExecutable 指向它（见 ENV RUNTIME_CLAUDE_CLI_PATH）。
+# 版本用 build ARG，可独立 bump（docker build --build-arg CLAUDE_CODE_VERSION=...）。
+# 注意：SDK 自带的平台二进制不打进镜像 —— 下面 pnpm install 用 --no-optional 跳过其 optional 平台包。
+ARG CLAUDE_CODE_VERSION=2.1.162
+RUN set -eux; \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}; \
+    chmod -R a+rX /usr/local/lib/node_modules/@anthropic-ai 2>/dev/null || true; \
+    ls -l /usr/local/bin/claude; \
+    DISABLE_AUTOUPDATER=1 /usr/local/bin/claude --version
+
 # ---- corepack 启用 pnpm（关下载交互提示，避免 build hang）----
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
@@ -54,7 +66,9 @@ COPY --chown=app:app pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY --chown=app:app apps/runtime/package.json ./apps/runtime/package.json
 
 USER app
-RUN pnpm install --frozen-lockfile --filter @app/runtime...
+# --no-optional：跳过 optionalDependencies（含 @anthropic-ai/claude-agent-sdk-<platform> 自带 CLI 二进制）。
+# 运行时始终用上面独立安装的 CLI（pathToClaudeCodeExecutable 恒设），故 SDK 自带二进制无需打包。
+RUN pnpm install --frozen-lockfile --no-optional --filter @app/runtime...
 
 # ---- COPY 剩余源码并编译 ----
 COPY --chown=app:app . .
@@ -66,11 +80,14 @@ RUN chmod +x /app/apps/runtime/container/entrypoint.sh
 USER app
 
 # ---- 运行时 ENV ----
+# RUNTIME_CLAUDE_CLI_PATH：指向独立安装的 Claude Code CLI（解耦核心）。SDK 据此 spawn 它，
+# 不再用自带二进制（已被 --no-optional 排除）。
 ENV DISABLE_AUTOUPDATER=1 \
     CLAUDE_CONFIG_DIR=/claude-config \
     HOME=/home/app \
     PORT=8080 \
     RUNTIME_HOSTNAME=0.0.0.0 \
+    RUNTIME_CLAUDE_CLI_PATH=/usr/local/bin/claude \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
     PATH=/home/app/.local/share/pnpm:/home/app/.local/bin:/usr/local/bin:$PATH
 
