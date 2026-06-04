@@ -281,7 +281,7 @@ opensdlc/coding-agent-runtime/
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | **P0 骨架** | pnpm workspace + Biome/vitest/tsconfig；apps/runtime：Hono + healthz/config + Dockerfile（SDK 自带 CLI + git/gh/uv/py3.12）+ entrypoint（写 `$CLAUDE_CONFIG_DIR/CLAUDE.md`）+ `runTurn` 单轮（`systemPrompt` preset + `settingSources:['user','project']`）+ SSE 出流 | 本地 `docker run` 后 `POST /sessions` 能流式返回 agent 输出；容器内 agent 遵循固定 guidelines |
-| **P1 多轮+会话+界面骨架** | 每轮 resume、Session Registry、`/sessions/*` 全套、OpenAPI+Swagger UI+CORS；`ANTHROPIC_BASE_URL/KEY/model` 可配（MiniMax 跑通）；apps/web：连接+spec 查看+SSE 对话 | 多轮上下文连续；MiniMax-M3 完成真实任务；界面能连容器、看 spec、对话 |
+| **P1 多轮+会话+界面骨架** ✅已实现 | 每轮 resume、Session Registry、`/sessions/*` 全套、OpenAPI+Swagger UI+CORS；`ANTHROPIC_BASE_URL/KEY/model` 可配（MiniMax 跑通）；apps/web：连接+spec 查看+SSE 对话 | 多轮上下文连续；MiniMax-M3 完成真实任务；界面能连容器、看 spec、对话 |
 | **P2 可观测性+界面 trace** | telemetry.ts、session/turn span、TRACEPARENT 注入、tool 树、usage→span、compose 后端栈；SSE/响应头透出 traceId；界面深链/内嵌 Jaeger | Jaeger 看到「turn→tool→llm_request」链路与 token；界面按 traceId 一键看 trace |
 | **P3 安全+韧性** | PreToolUse Bash 白名单 + disallowedTools + egress 白名单 + 容器硬化；Last-Event-ID 重放/心跳；abort 接线 | 越权 bash 被拦并回有意义信息；断线可重连；中止生效 |
 | **P4（可选）规模化** | 第②层编排：控制面 spawn 一会话一容器、动态挂载、生命周期/暖池/路由 | 多会话并发各自隔离；暖池冷启动秒级 |
@@ -296,5 +296,5 @@ opensdlc/coding-agent-runtime/
 3. 用单 string prompt（非 async-iterable）驱动是否恢复完整 span 树 → 实测。
 4. `TRACEPARENT` 是否需同带 `TRACESTATE` 与 sampled 标志才被 CLI 采纳 → 隔离环境验证（不能在 SDK 主通道用 console）。
 5. 删除会话时挂载状态清理策略（保留/归档/删除）与 30 天自动清理的取舍。
-6. Scalar vs 直接复用 runtime `/docs` 的取舍（界面内嵌是否值得，或直接给链接）。
+6. Scalar vs 直接复用 runtime `/docs` 的取舍（界面内嵌是否值得，或直接给链接）。（**P1 决策**：界面用 iframe 内嵌 runtime 的 `/docs` + 直链，不引入 Scalar；后续如需再评估。）
 7. **自带 CLI 在容器 headless 下被 `query()` 驱动**是否稳定（含 stream-json 路径、resume）→ P0 实测；必要时回退到显式装 CLI + `pathToClaudeCodeExecutable`。
