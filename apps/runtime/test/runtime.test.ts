@@ -74,4 +74,17 @@ describe("runTurn", () => {
       expect.arrayContaining(["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)"]),
     );
   });
+
+  it("passes a provided abortController through to query options", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    const ac = new AbortController();
+    for await (const _e of runTurn({ prompt: "hi", abortController: ac }, testConfig, capturing)) {
+      // drain
+    }
+    expect(captured?.abortController).toBe(ac);
+  });
 });

@@ -16,6 +16,7 @@ export interface RunTurnInput {
   prompt: string;
   model?: string;
   resumeId?: string;
+  abortController?: AbortController;
 }
 
 // 把 process.env（值可能 undefined）规整为 query() 需要的 Record<string,string>，再叠加运行时覆盖。
@@ -107,6 +108,7 @@ export async function* runTurn(
     settingSources: ["user", "project"],
     includePartialMessages: cfg.includePartial,
     env: buildChildEnv(cfg),
+    abortController: input.abortController,
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
 
