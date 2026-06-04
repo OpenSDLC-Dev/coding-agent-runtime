@@ -70,8 +70,16 @@ async function streamTurn(
         });
       }
     }
-  } catch {
-    // pre-read error: fall through to streamSSE error handler
+  } catch (preErr) {
+    // 预读失败：通过 SSE 将错误通知客户端，避免静默空流。
+    const correlationId = randomUUID();
+    console.error(`[sessions] pre-read error correlationId=${correlationId}:`, preErr);
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({ message: "internal error", correlationId }),
+      });
+    });
   }
 
   return streamSSE(c, async (stream) => {

@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import type { RuntimeConfig } from "./agent/config.js";
-import { type QueryFn, runTurn } from "./agent/runtime.js";
+import type { QueryFn } from "./agent/runtime.js";
+import { SessionRegistry } from "./agent/session-store.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
 
 export interface ServerDeps {
   config: RuntimeConfig;
@@ -10,9 +10,10 @@ export interface ServerDeps {
   version?: string;
 }
 
-export function createServer(deps: ServerDeps): Hono {
+export function createServer(deps: ServerDeps): OpenAPIHono {
   const { config, queryFn, version = "0.0.0" } = deps;
-  const app = new Hono();
+  const app = new OpenAPIHono();
+  const registry = new SessionRegistry();
 
   app.get("/healthz", (c) => c.json({ status: "ok" }));
 
@@ -25,35 +26,7 @@ export function createServer(deps: ServerDeps): Hono {
     }),
   );
 
-  app.post("/sessions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { prompt?: unknown; model?: unknown };
-    const prompt = typeof body.prompt === "string" ? body.prompt : "";
-    if (!prompt) {
-      return c.json({ error: "prompt is required" }, 400);
-    }
-    const model = typeof body.model === "string" ? body.model : undefined;
-
-    return streamSSE(c, async (stream) => {
-      try {
-        for await (const evt of runTurn({ prompt, model }, config, queryFn)) {
-          if (stream.aborted) break;
-          await stream.writeSSE({
-            event: evt.event,
-            data: JSON.stringify(evt.data),
-            ...(evt.id ? { id: evt.id } : {}),
-          });
-        }
-      } catch (err) {
-        // 服务端记全量错误，客户端只回通用 message + correlationId（不泄露内部细节）。
-        const correlationId = randomUUID();
-        console.error(`[/sessions] error correlationId=${correlationId}:`, err);
-        await stream.writeSSE({
-          event: "error",
-          data: JSON.stringify({ message: "internal error", correlationId }),
-        });
-      }
-    });
-  });
+  registerSessionRoutes(app, { config, registry, queryFn, sdk: {}, version });
 
   return app;
 }
