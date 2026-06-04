@@ -49,7 +49,7 @@ export function App() {
             <span className="ver">runtime v{cfg.version}</span>
           </div>
           {tab === "chat" ? (
-            <ChatPanel baseUrl={baseUrl} model={model} />
+            <ChatPanel baseUrl={baseUrl} model={model} jaegerBaseUrl={cfg.jaegerBaseUrl} />
           ) : (
             <SpecPanel baseUrl={baseUrl} />
           )}
