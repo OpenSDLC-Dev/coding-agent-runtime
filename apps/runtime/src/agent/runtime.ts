@@ -99,6 +99,8 @@ export async function* runTurn(
   const options: Options = {
     cwd: cfg.cwd,
     model: input.model ?? cfg.defaultModel,
+    // 推理强度默认拉满（cfg.effort 默认 "max"，可经 RUNTIME_EFFORT 调整）；详见 config.ts。
+    effort: cfg.effort,
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     // P0 安全兜底：deny 永远赢，挡住联网/提权/危险删除。这是不依赖文件设置的硬兜底；
