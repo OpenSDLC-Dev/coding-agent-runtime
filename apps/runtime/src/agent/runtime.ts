@@ -1,5 +1,8 @@
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
+import { isSpanContextValid, type Span, SpanStatusCode } from "@opentelemetry/api";
+import { startToolSpan, startTurnSpan, traceparentOf } from "../otel/spans.js";
+import { setUsageAttributes } from "../otel/usage.js";
 import type { RuntimeConfig } from "./config.js";
 
 export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error" | "aborted";
@@ -96,6 +99,18 @@ export async function* runTurn(
   cfg: RuntimeConfig,
   queryFn: QueryFn = defaultQuery,
 ): AsyncGenerator<SseEvent> {
+  const span = startTurnSpan({
+    model: input.model ?? cfg.defaultModel,
+    resumeId: input.resumeId,
+  });
+  const sc = span.spanContext();
+  const traceId = isSpanContextValid(sc) ? sc.traceId : undefined;
+  const toolSpans = new Map<string, Span>();
+
+  const env = buildChildEnv(cfg);
+  // 仅当 span context 有效（已起真实 TracerProvider）才注入 TRACEPARENT，避免给子 CLI 喂全零 id。
+  if (traceId) env.TRACEPARENT = traceparentOf(span);
+
   const options: Options = {
     cwd: cfg.cwd,
     model: input.model ?? cfg.defaultModel,
@@ -109,7 +124,7 @@ export async function* runTurn(
     systemPrompt: { type: "preset", preset: "claude_code" },
     settingSources: ["user", "project"],
     includePartialMessages: cfg.includePartial,
-    env: buildChildEnv(cfg),
+    env,
     abortController: input.abortController,
     // SDK/CLI 解耦：指向独立安装的 Claude Code CLI 原生二进制（设置时 SDK 直接 spawn 它，
     // 走 stdio/stream-json）。未设则 SDK 用自带平台二进制。
@@ -117,8 +132,52 @@ export async function* runTurn(
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
 
-  for await (const m of queryFn({ prompt: input.prompt, options })) {
-    const evt = mapMessage(m);
-    if (evt) yield evt;
+  try {
+    for await (const m of queryFn({ prompt: input.prompt, options })) {
+      const evt = mapMessage(m);
+      if (!evt) continue;
+
+      switch (evt.event) {
+        case "init":
+          span.setAttribute("gen_ai.conversation.id", String(evt.data.sessionId));
+          break;
+        case "assistant":
+          for (const t of (evt.data.toolUses ?? []) as Array<{ id: string; name: string }>) {
+            toolSpans.set(t.id, startToolSpan(span, { name: t.name, id: t.id }));
+          }
+          break;
+        case "tool_result":
+          for (const r of (evt.data.results ?? []) as Array<{
+            toolUseId: string;
+            isError: boolean;
+          }>) {
+            const ts = toolSpans.get(r.toolUseId);
+            if (ts) {
+              if (r.isError) ts.setStatus({ code: SpanStatusCode.ERROR });
+              ts.end();
+              toolSpans.delete(r.toolUseId);
+            }
+          }
+          break;
+        case "result":
+          setUsageAttributes(span, evt.data);
+          break;
+        case "error":
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          break;
+      }
+
+      if (traceId && (evt.event === "init" || evt.event === "result")) {
+        evt.data = { ...evt.data, traceId };
+      }
+      yield evt;
+    }
+  } catch (err) {
+    span.recordException(err as Error);
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    for (const ts of toolSpans.values()) ts.end(); // 收尾未配对的 tool span
+    span.end();
   }
 }
