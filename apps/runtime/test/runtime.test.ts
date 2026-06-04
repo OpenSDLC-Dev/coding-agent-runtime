@@ -75,6 +75,18 @@ describe("runTurn", () => {
     );
   });
 
+  it("passes the configured effort level through to query options", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, { ...testConfig, effort: "low" }, capturing)) {
+      // drain
+    }
+    expect(captured?.effort).toBe("low");
+  });
+
   it("passes a provided abortController through to query options", async () => {
     let captured: Options | undefined;
     const capturing: QueryFn = (args) => {

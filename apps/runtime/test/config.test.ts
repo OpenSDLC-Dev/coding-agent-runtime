@@ -18,6 +18,7 @@ describe("loadConfig", () => {
       JAEGER_BASE_URL: "http://localhost:16686",
       RUNTIME_HOSTNAME: "0.0.0.0",
       RUNTIME_CLAUDE_CLI_PATH: "/usr/local/bin/claude",
+      RUNTIME_EFFORT: "high",
     });
     expect(cfg).toEqual({
       anthropicApiKey: "sk-test",
@@ -31,6 +32,7 @@ describe("loadConfig", () => {
       cwd: "/workspace",
       hostname: "0.0.0.0",
       claudeCliPath: "/usr/local/bin/claude",
+      effort: "high",
     });
   });
 
@@ -45,6 +47,12 @@ describe("loadConfig", () => {
     expect(cfg.allowedModels).toBeUndefined();
     expect(cfg.corsOrigins).toBe("*");
     expect(cfg.claudeCliPath).toBeUndefined();
+    expect(cfg.effort).toBe("max");
+  });
+
+  it("falls back to max effort for an invalid RUNTIME_EFFORT value", () => {
+    const cfg = loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_EFFORT: "bogus" });
+    expect(cfg.effort).toBe("max");
   });
 });
 
