@@ -1,5 +1,11 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { describe, expect, it } from "vitest";
+import { trace } from "@opentelemetry/api";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
 import { collectSse, fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
@@ -84,5 +90,35 @@ describe("SSE routes", () => {
     const { events } = await collectSse(res);
     expect(events).toContain("result");
     expect(registry.get("sess-1")?.turns).toBe(2);
+  });
+
+  describe("with telemetry active", () => {
+    let provider: BasicTracerProvider;
+
+    beforeEach(() => {
+      provider = new BasicTracerProvider({
+        spanProcessors: [new SimpleSpanProcessor(new InMemorySpanExporter())],
+      });
+      trace.setGlobalTracerProvider(provider);
+    });
+
+    afterEach(async () => {
+      await provider.shutdown();
+      trace.disable();
+    });
+
+    it("sets X-Trace-Id response header matching the init event traceId", async () => {
+      const { app } = makeApp();
+      const res = await app.request("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "hi" }),
+      });
+      expect(res.status).toBe(200);
+      const header = res.headers.get("X-Trace-Id");
+      expect(header).toMatch(/^[0-9a-f]{32}$/);
+      const text = await res.text();
+      expect(text).toContain(`"traceId":"${header}"`);
+    });
   });
 });
