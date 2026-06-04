@@ -19,7 +19,7 @@ export const TurnBody = z
 export const SessionListItem = z
   .object({
     id: z.string(),
-    model: z.string().nullable(),
+    model: z.string().nullish(),
     status: StatusEnum,
     turns: z.number().int(),
     inputTokens: z.number().int(),
@@ -51,6 +51,8 @@ export const ErrorResponse = z.object({ error: z.string() }).openapi("ErrorRespo
 export const StopResponse = z.object({ stopped: z.boolean() }).openapi("StopResponse");
 export const DeleteResponse = z.object({ deleted: z.boolean() }).openapi("DeleteResponse");
 
-export const SessionIdParam = z.object({
-  id: z.string().openapi({ param: { name: "id", in: "path" }, example: "0c1d…" }),
-});
+export const SessionIdParam = z
+  .object({
+    id: z.string().openapi({ param: { name: "id", in: "path" }, example: "0c1d…" }),
+  })
+  .openapi("SessionIdParam");

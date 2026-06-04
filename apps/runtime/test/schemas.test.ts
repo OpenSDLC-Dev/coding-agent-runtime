@@ -31,6 +31,22 @@ describe("schemas", () => {
     expect(ok.success).toBe(true);
   });
 
+  it("SessionListItem accepts model: undefined (registry shape without model key)", () => {
+    const r = SessionListItem.safeParse({
+      id: "s2",
+      // model key omitted — mirrors SessionRecord.model = undefined
+      status: "idle",
+      turns: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalCostUsd: 0,
+      changedFiles: [],
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    expect(r.success).toBe(true);
+  });
+
   it("SessionInfo extends list item with optional disk metadata", () => {
     const r = SessionInfo.safeParse({
       id: "s1",

@@ -2,7 +2,7 @@ import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "./config.js";
 
-export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error";
+export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error" | "aborted";
 
 export interface SseEvent {
   event: SseEventName;
