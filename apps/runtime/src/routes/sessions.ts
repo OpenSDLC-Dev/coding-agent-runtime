@@ -1,12 +1,26 @@
 import { randomUUID } from "node:crypto";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RuntimeConfig } from "../agent/config.js";
 import { isModelAllowed } from "../agent/config.js";
 import { type QueryFn, runTurn, type SseEvent } from "../agent/runtime.js";
-import { extractChangedFiles, type SessionRegistry } from "../agent/session-store.js";
-import { CreateSessionBody, SseEventSchema } from "../schemas/index.js";
+import {
+  extractChangedFiles,
+  type SessionRecord,
+  type SessionRegistry,
+} from "../agent/session-store.js";
+import {
+  CreateSessionBody,
+  DeleteResponse,
+  ErrorResponse,
+  SessionIdParam,
+  SessionInfo,
+  SessionListItem,
+  SseEventSchema,
+  StopResponse,
+  TranscriptMessage,
+} from "../schemas/index.js";
 
 // 注入式 SDK 句柄（测试传假实现；生产由 server.ts 默认接真 SDK）。
 export interface SessionSdk {
@@ -190,4 +204,153 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     }
     return streamTurn(c, { prompt, model, resumeId: id }, deps);
   });
+
+  // ---- REST 端点 ----
+
+  // 把 registry 记录投影成 list item（model 用 null 兼容 schema 的 nullable）。
+  const toListItem = (r: SessionRecord) => ({
+    id: r.id,
+    model: r.model ?? null,
+    status: r.status,
+    turns: r.turns,
+    inputTokens: r.inputTokens,
+    outputTokens: r.outputTokens,
+    totalCostUsd: r.totalCostUsd,
+    changedFiles: r.changedFiles,
+    createdAt: r.createdAt,
+    lastActiveAt: r.lastActiveAt,
+  });
+
+  // GET /sessions
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sessions",
+      tags: ["sessions"],
+      summary: "列出会话（运行态视图）",
+      responses: {
+        200: {
+          description: "会话列表",
+          content: { "application/json": { schema: SessionListItem.array() } },
+        },
+      },
+    }),
+    (c) => c.json(deps.registry.list().map(toListItem), 200),
+  );
+
+  // GET /sessions/:id
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sessions/{id}",
+      tags: ["sessions"],
+      summary: "会话信息（registry + 盘上 getSessionInfo）",
+      request: { params: SessionIdParam },
+      responses: {
+        200: { description: "会话信息", content: { "application/json": { schema: SessionInfo } } },
+        404: { description: "未找到", content: { "application/json": { schema: ErrorResponse } } },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const rec = deps.registry.get(id);
+      const info = deps.sdk.getSessionInfo
+        ? await deps.sdk.getSessionInfo(id, { dir: config.cwd })
+        : undefined;
+      if (!rec && !info) return c.json({ error: "session not found" }, 404);
+      const base = rec
+        ? toListItem(rec)
+        : {
+            id,
+            model: null,
+            status: "idle" as const,
+            turns: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalCostUsd: 0,
+            changedFiles: [],
+            createdAt: 0,
+            lastActiveAt: 0,
+          };
+      return c.json(
+        {
+          ...base,
+          ...(info ? { summary: info.summary, cwd: info.cwd, gitBranch: info.gitBranch } : {}),
+        },
+        200,
+      );
+    },
+  );
+
+  // GET /sessions/:id/transcript
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sessions/{id}/transcript",
+      tags: ["sessions"],
+      summary: "完整 transcript（getSessionMessages）",
+      request: { params: SessionIdParam },
+      responses: {
+        200: {
+          description: "消息列表",
+          content: { "application/json": { schema: TranscriptMessage.array() } },
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const msgs = deps.sdk.getSessionMessages
+        ? await deps.sdk.getSessionMessages(id, { dir: config.cwd })
+        : [];
+      return c.json(msgs, 200);
+    },
+  );
+
+  // POST /sessions/:id/stop
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/sessions/{id}/stop",
+      tags: ["sessions"],
+      summary: "中止当前轮（abortController.abort()）",
+      request: { params: SessionIdParam },
+      responses: {
+        200: {
+          description: "是否成功中止",
+          content: { "application/json": { schema: StopResponse } },
+        },
+      },
+    }),
+    (c) => {
+      const { id } = c.req.valid("param");
+      return c.json({ stopped: deps.registry.abort(id) }, 200);
+    },
+  );
+
+  // DELETE /sessions/:id
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: "/sessions/{id}",
+      tags: ["sessions"],
+      summary: "删除会话（盘上 deleteSession + 清 registry）",
+      request: { params: SessionIdParam },
+      responses: {
+        200: { description: "已删除", content: { "application/json": { schema: DeleteResponse } } },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      deps.registry.abort(id);
+      if (deps.sdk.deleteSession) {
+        try {
+          await deps.sdk.deleteSession(id, { dir: config.cwd });
+        } catch (err) {
+          console.error("[sessions] deleteSession failed:", err);
+        }
+      }
+      deps.registry.remove(id);
+      return c.json({ deleted: true }, 200);
+    },
+  );
 }
