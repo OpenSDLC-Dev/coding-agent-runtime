@@ -26,6 +26,7 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
     "*",
     cors({
       origin: config.corsOrigins === "*" ? "*" : config.corsOrigins.split(",").map((s) => s.trim()),
+      exposeHeaders: ["X-Trace-Id"],
     }),
   );
 

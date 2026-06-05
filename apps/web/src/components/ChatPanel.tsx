@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { stopSession, streamTurn } from "../lib/api";
+import { traceUrl } from "../lib/trace";
 
 interface Line {
   kind: "user" | "assistant" | "tool" | "result" | "error" | "system";
@@ -9,13 +10,15 @@ interface Line {
 interface Props {
   baseUrl: string;
   model: string | undefined;
+  jaegerBaseUrl: string | null;
 }
 
-export function ChatPanel({ baseUrl, model }: Props) {
+export function ChatPanel({ baseUrl, model, jaegerBaseUrl }: Props) {
   const [lines, setLines] = useState<Line[]>([]);
   const [prompt, setPrompt] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [lastTraceId, setLastTraceId] = useState<string | undefined>(undefined);
 
   function push(line: Line) {
     setLines((prev) => [...prev, line]);
@@ -32,6 +35,7 @@ export function ChatPanel({ baseUrl, model }: Props) {
         const data = JSON.parse(evt.data) as Record<string, unknown>;
         if (evt.event === "init") {
           setSessionId(String(data.sessionId));
+          if (data.traceId) setLastTraceId(String(data.traceId));
           push({ kind: "system", text: `session ${data.sessionId} · model ${data.model ?? ""}` });
         } else if (evt.event === "assistant") {
           if (data.text) push({ kind: "assistant", text: String(data.text) });
@@ -46,6 +50,7 @@ export function ChatPanel({ baseUrl, model }: Props) {
             kind: "result",
             text: `done · turns ${data.num_turns} · in ${u?.input_tokens ?? 0} out ${u?.output_tokens ?? 0} · $${data.total_cost_usd ?? 0}`,
           });
+          if (data.traceId) setLastTraceId(String(data.traceId));
         } else if (evt.event === "error" || evt.event === "aborted") {
           push({ kind: "error", text: `${evt.event}: ${evt.data}` });
         }
@@ -96,6 +101,14 @@ export function ChatPanel({ baseUrl, model }: Props) {
             新建会话
           </button>
           <span className="sid">{sessionId ? `会话 ${sessionId}` : "未开始"}</span>
+          {(() => {
+            const url = traceUrl(jaegerBaseUrl, lastTraceId);
+            return url ? (
+              <a className="trace-link" href={url} target="_blank" rel="noreferrer">
+                在 Jaeger 打开 trace
+              </a>
+            ) : null;
+          })()}
         </div>
       </div>
     </div>

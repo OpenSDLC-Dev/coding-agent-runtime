@@ -1,5 +1,11 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { describe, expect, it } from "vitest";
+import { trace } from "@opentelemetry/api";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type QueryFn, runTurn } from "../src/agent/runtime.js";
 import { fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
 
@@ -126,5 +132,56 @@ describe("runTurn", () => {
       // drain
     }
     expect(captured?.pathToClaudeCodeExecutable).toBeUndefined();
+  });
+});
+
+describe("runTurn telemetry", () => {
+  let exporter: InMemorySpanExporter;
+  let provider: BasicTracerProvider;
+
+  beforeEach(() => {
+    exporter = new InMemorySpanExporter();
+    provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+    trace.setGlobalTracerProvider(provider);
+  });
+
+  afterEach(async () => {
+    await provider.shutdown();
+    trace.disable();
+  });
+
+  it("emits a turn span with a nested tool span and usage attributes", async () => {
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(sampleMessages))) {
+      // drain
+    }
+    const spans = exporter.getFinishedSpans();
+    const turn = spans.find((s) => s.name === "agent.turn");
+    const tool = spans.find((s) => s.name === "tool:Bash");
+    expect(turn).toBeDefined();
+    expect(tool?.parentSpanContext?.spanId).toBe(turn?.spanContext().spanId);
+    expect(turn?.attributes["gen_ai.conversation.id"]).toBe("sess-1");
+    expect(turn?.attributes["gen_ai.usage.input_tokens"]).toBe(10);
+    expect(turn?.attributes["gen_ai.usage.output_tokens"]).toBe(20);
+  });
+
+  it("adds traceId to init and result events and injects TRACEPARENT into child env", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {
+        for (const m of sampleMessages) yield m;
+      })();
+    };
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, capturing)) {
+      events.push(e);
+    }
+    const init = events.find((e) => e.event === "init");
+    const result = events.find((e) => e.event === "result");
+    const traceId = init?.data.traceId as string;
+    expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(result?.data.traceId).toBe(traceId);
+    // TRACEPARENT 注入子 env，且其 trace-id 与本轮一致
+    expect(captured?.env?.TRACEPARENT).toContain(traceId);
   });
 });

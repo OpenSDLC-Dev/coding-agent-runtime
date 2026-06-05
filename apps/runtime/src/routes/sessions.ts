@@ -83,6 +83,9 @@ async function streamTurn(
           abortController,
         });
       }
+      // 把本轮 traceId 透出到响应头（前端可据此深链 Jaeger；需 CORS exposeHeaders）。
+      const traceId = firstEvt.data.traceId;
+      if (typeof traceId === "string") c.header("X-Trace-Id", traceId);
     }
   } catch (preErr) {
     // 预读失败：通过 SSE 将错误通知客户端，避免静默空流。

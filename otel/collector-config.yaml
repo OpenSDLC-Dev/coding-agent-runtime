@@ -1,0 +1,38 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # 转发 trace 到 Jaeger（Jaeger all-in-one 开 OTLP gRPC 4317）
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  # 暴露 metrics 给 Prometheus 抓取
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  # logs 落到 collector 自身日志（spec §3.3 OTEL_LOGS_EXPORTER=otlp 的接收端）
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
