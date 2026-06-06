@@ -151,4 +151,4 @@ pnpm check                             # Biome format + lint (biome check --writ
 
 ## License
 
-No LICENSE specified yet. All rights reserved by default; add a `LICENSE` file if you intend to open-source it.
+[MIT](LICENSE) © 2026 OpenSDLC-Dev
