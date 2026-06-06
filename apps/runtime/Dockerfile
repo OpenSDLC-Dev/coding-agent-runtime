@@ -9,6 +9,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         git \
         ripgrep \
+        jq \
         curl \
         ca-certificates \
         wget \
