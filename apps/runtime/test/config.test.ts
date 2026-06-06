@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isModelAllowed, loadConfig } from "../src/agent/config.js";
+import { DEFAULT_BASH_ALLOWLIST } from "../src/permissions/bash-allowlist.js";
 
 describe("loadConfig", () => {
   it("throws when ANTHROPIC_API_KEY is missing", () => {
@@ -33,6 +34,8 @@ describe("loadConfig", () => {
       hostname: "0.0.0.0",
       claudeCliPath: "/usr/local/bin/claude",
       effort: "high",
+      bashAllowlist: [...DEFAULT_BASH_ALLOWLIST],
+      heartbeatMs: 20000,
     });
   });
 
@@ -48,11 +51,41 @@ describe("loadConfig", () => {
     expect(cfg.corsOrigins).toBe("*");
     expect(cfg.claudeCliPath).toBeUndefined();
     expect(cfg.effort).toBe("max");
+    expect(cfg.bashAllowlist).toEqual([...DEFAULT_BASH_ALLOWLIST]);
+    expect(cfg.heartbeatMs).toBe(20000);
   });
 
   it("falls back to max effort for an invalid RUNTIME_EFFORT value", () => {
     const cfg = loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_EFFORT: "bogus" });
     expect(cfg.effort).toBe("max");
+  });
+
+  it("parses RUNTIME_BASH_ALLOWLIST (comma/space separated) overriding the default", () => {
+    const cfg = loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_BASH_ALLOWLIST: "git, ls  rg" });
+    expect(cfg.bashAllowlist).toEqual(["git", "ls", "rg"]);
+  });
+
+  it("falls back to the default allowlist when RUNTIME_BASH_ALLOWLIST is blank", () => {
+    const cfg = loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_BASH_ALLOWLIST: "   " });
+    expect(cfg.bashAllowlist).toEqual([...DEFAULT_BASH_ALLOWLIST]);
+  });
+
+  it("parses RUNTIME_SSE_HEARTBEAT_MS, allowing 0 to disable", () => {
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_SSE_HEARTBEAT_MS: "5000" }).heartbeatMs,
+    ).toBe(5000);
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_SSE_HEARTBEAT_MS: "0" }).heartbeatMs,
+    ).toBe(0);
+  });
+
+  it("falls back to 20000 for an invalid RUNTIME_SSE_HEARTBEAT_MS", () => {
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_SSE_HEARTBEAT_MS: "abc" }).heartbeatMs,
+    ).toBe(20000);
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_SSE_HEARTBEAT_MS: "-3" }).heartbeatMs,
+    ).toBe(20000);
   });
 });
 
