@@ -26,6 +26,23 @@ export interface RuntimeConfig {
   bashAllowlist: string[];
   // SSE heartbeat interval (milliseconds); 0 = disabled. Overridden via RUNTIME_SSE_HEARTBEAT_MS, default 20000.
   heartbeatMs: number;
+  // Runaway backstop: max agentic turns (API round-trips) before the SDK stops a turn. The Agent SDK has no
+  // top-level session timeout, so this bounds an out-of-control/looping agent. Overridden via RUNTIME_MAX_TURNS;
+  // default 100; 0 = unlimited (not recommended).
+  maxTurns: number;
+  // Optional wall-clock deadline for a single turn (ms). When > 0, the turn's AbortController fires at the deadline
+  // (yielding an `aborted` event). Overridden via RUNTIME_TURN_TIMEOUT_MS; default 0 = disabled.
+  turnTimeoutMs: number;
+  // Admission control: max concurrent in-flight turns. Beyond this, a new turn is rejected with HTTP 429.
+  // Bounds subprocess RAM so concurrent sessions cannot OOM the container. Overridden via RUNTIME_MAX_CONCURRENT_TURNS;
+  // default 2 (aligned with the container's 2g mem_limit); 0 = unlimited.
+  maxConcurrentTurns: number;
+  // Idle-session GC: remove a session whose lastActiveAt is older than this (ms), reclaiming its on-disk transcript.
+  // Overridden via RUNTIME_SESSION_TTL_MS; default 0 = disabled.
+  sessionTtlMs: number;
+  // How often the idle-session GC sweep runs (ms). Overridden via RUNTIME_GC_INTERVAL_MS; default 3600000 (1h).
+  // Only active when sessionTtlMs > 0.
+  gcIntervalMs: number;
 }
 
 const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -50,6 +67,20 @@ function parseHeartbeatMs(raw: string | undefined): number {
   if (raw === undefined) return 20000;
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n >= 0 ? n : 20000;
+}
+
+// Parse a non-negative integer env var; missing/invalid/negative → fallback. 0 is preserved (a meaningful value: unlimited/disabled).
+function parseNonNegInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+// Parse a positive integer env var; missing/invalid/non-positive → fallback.
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -80,6 +111,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     effort: parseEffort(env.RUNTIME_EFFORT),
     bashAllowlist: parseBashAllowlist(env.RUNTIME_BASH_ALLOWLIST),
     heartbeatMs: parseHeartbeatMs(env.RUNTIME_SSE_HEARTBEAT_MS),
+    maxTurns: parseNonNegInt(env.RUNTIME_MAX_TURNS, 100),
+    turnTimeoutMs: parseNonNegInt(env.RUNTIME_TURN_TIMEOUT_MS, 0),
+    maxConcurrentTurns: parseNonNegInt(env.RUNTIME_MAX_CONCURRENT_TURNS, 2),
+    sessionTtlMs: parseNonNegInt(env.RUNTIME_SESSION_TTL_MS, 0),
+    gcIntervalMs: parsePositiveInt(env.RUNTIME_GC_INTERVAL_MS, 3_600_000),
   };
 }
 

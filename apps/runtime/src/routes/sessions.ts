@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { Semaphore } from "../agent/concurrency.js";
 import type { RuntimeConfig } from "../agent/config.js";
 import { isModelAllowed } from "../agent/config.js";
 import { type QueryFn, runTurn, type SseEvent } from "../agent/runtime.js";
@@ -83,7 +84,20 @@ async function streamTurn(
   c: Context,
   input: { prompt: string; model?: string; resumeId?: string },
   deps: SessionRouteDeps,
+  sem: Semaphore,
 ): Promise<Response> {
+  // Admission control: reject (rather than queue) when at capacity so concurrent subprocesses cannot OOM the host.
+  // The slot is held until the SSE stream finishes; release() below covers every exit path (released guard prevents double-free).
+  if (!sem.tryAcquire()) {
+    return c.json({ error: "runtime at capacity" }, 429);
+  }
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    sem.release();
+  };
+
   const abortController = new AbortController();
   const gen = runTurn({ ...input, abortController }, deps.config, deps.queryFn);
 
@@ -111,10 +125,14 @@ async function streamTurn(
     const correlationId = randomUUID();
     console.error(`[sessions] pre-read error correlationId=${correlationId}:`, preErr);
     return streamSSE(c, async (stream) => {
-      await stream.writeSSE({
-        event: "error",
-        data: JSON.stringify({ message: "internal error", correlationId }),
-      });
+      try {
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message: "internal error", correlationId }),
+        });
+      } finally {
+        release();
+      }
     });
   }
 
@@ -173,12 +191,15 @@ async function streamTurn(
       }
     } finally {
       stopHeartbeat();
+      release();
     }
   });
 }
 
 export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps): void {
   const { config } = deps;
+  // One admission semaphore per server instance, sized by RUNTIME_MAX_CONCURRENT_TURNS (0 = unlimited).
+  const sem = new Semaphore(config.maxConcurrentTurns);
 
   // ---- OpenAPI registration (SSE endpoints use registerPath to manually register the single-event payload) ----
   for (const path of ["/sessions", "/sessions/{id}/turns"]) {
@@ -201,6 +222,7 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
         },
         400: { description: "prompt is missing or model is not on the allowlist" },
         404: { description: "session does not exist (turns only)" },
+        429: { description: "runtime at capacity (RUNTIME_MAX_CONCURRENT_TURNS reached)" },
       },
     });
   }
@@ -214,7 +236,7 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
-    return streamTurn(c, { prompt, model }, deps);
+    return streamTurn(c, { prompt, model }, deps, sem);
   });
 
   // ---- POST /sessions/:id/turns: continuation ----
@@ -233,7 +255,7 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
-    return streamTurn(c, { prompt, model, resumeId: id }, deps);
+    return streamTurn(c, { prompt, model, resumeId: id }, deps, sem);
   });
 
   // ---- REST endpoints ----

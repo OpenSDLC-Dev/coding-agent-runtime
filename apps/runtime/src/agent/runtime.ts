@@ -132,11 +132,21 @@ export async function* runTurn(
     includePartialMessages: cfg.includePartial,
     env,
     abortController: input.abortController,
+    // Runaway backstop: the Agent SDK has no top-level session timeout, so cap agentic turns (RUNTIME_MAX_TURNS).
+    // 0 = unlimited (omit the option).
+    ...(cfg.maxTurns > 0 ? { maxTurns: cfg.maxTurns } : {}),
     // SDK/CLI decoupling: points to the separately installed native Claude Code CLI binary (when set, the SDK spawns it directly,
     // over stdio/stream-json). When unset, the SDK falls back to its bundled platform binary.
     ...(cfg.claudeCliPath ? { pathToClaudeCodeExecutable: cfg.claudeCliPath } : {}),
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
+
+  // Optional wall-clock deadline: abort this turn's controller after turnTimeoutMs (the abort path yields an `aborted` event).
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  if (cfg.turnTimeoutMs > 0 && input.abortController) {
+    timeout = setTimeout(() => input.abortController?.abort(), cfg.turnTimeoutMs);
+    (timeout as { unref?: () => void }).unref?.();
+  }
 
   try {
     for await (const m of queryFn({ prompt: input.prompt, options })) {
@@ -183,6 +193,7 @@ export async function* runTurn(
     span.setStatus({ code: SpanStatusCode.ERROR });
     throw err;
   } finally {
+    if (timeout) clearTimeout(timeout);
     for (const ts of toolSpans.values()) ts.end(); // Close out any unpaired tool spans
     span.end();
   }

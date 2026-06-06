@@ -119,6 +119,52 @@ describe("SSE routes", () => {
     expect(registry.get("sess-1")?.status).toBe("aborted");
   });
 
+  it("returns 429 when at max concurrency, and readmits after the slot frees", async () => {
+    // hang after init so the first turn holds its admission slot while we probe a second request.
+    const hang: QueryFn = (args) => {
+      const signal = args.options.abortController?.signal;
+      return (async function* () {
+        yield sampleMessages[0] as never; // init (sess-1)
+        await new Promise<void>((_, reject) => {
+          if (signal?.aborted) return reject(new Error("aborted"));
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        });
+      })();
+    };
+    const { app, registry } = makeApp({
+      queryFn: hang,
+      config: { ...testConfig, maxConcurrentTurns: 1 },
+    });
+    const hdr = { "Content-Type": "application/json" };
+    const res1 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "a" }),
+    });
+    expect(res1.status).toBe(200); // slot acquired, held (stream still open on the hung turn)
+    const res2 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "b" }),
+    });
+    expect(res2.status).toBe(429);
+    expect(await res2.json()).toMatchObject({ error: "runtime at capacity" });
+
+    // free the first turn's slot: abort it, then drain its stream so streamSSE's finally (release) runs.
+    expect(registry.abort("sess-1")).toBe(true);
+    await collectSse(res1);
+
+    const res3 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "c" }),
+    });
+    expect(res3.status).toBe(200); // slot was readmitted after res1 freed it
+    // res3 also uses the hung queryFn; abort + drain so the stream (and its slot) closes cleanly.
+    registry.abort("sess-1");
+    await collectSse(res3);
+  });
+
   describe("with telemetry active", () => {
     let provider: BasicTracerProvider;
 

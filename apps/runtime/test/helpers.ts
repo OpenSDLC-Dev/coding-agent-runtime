@@ -18,6 +18,11 @@ export const testConfig: RuntimeConfig = {
   effort: "max",
   bashAllowlist: [...DEFAULT_BASH_ALLOWLIST],
   heartbeatMs: 0,
+  maxTurns: 0,
+  turnTimeoutMs: 0,
+  maxConcurrentTurns: 0,
+  sessionTtlMs: 0,
+  gcIntervalMs: 3_600_000,
 };
 
 // Minimal message sequence for a successful single turn: init -> assistant(text + tool_use) -> user(tool_result) -> result(success)

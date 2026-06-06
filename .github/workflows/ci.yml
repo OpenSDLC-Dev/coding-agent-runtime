@@ -60,6 +60,50 @@ jobs:
       - name: Build runtime image
         run: docker build -f apps/runtime/Dockerfile -t coding-agent-runtime:ci .
 
+  smoke:
+    name: smoke (SDK x CLI real turn)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    # The Agent SDK and the standalone CLI are deliberately decoupled (SDK 0.3.x + claude-code 2.1.x),
+    # talking over stdio/stream-json. This job runs one real turn end-to-end to catch version drift that
+    # unit tests (which stub the SDK) cannot. Skipped on fork PRs: repository secrets are unavailable there.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime image
+        run: docker build -f apps/runtime/Dockerfile -t coding-agent-runtime:smoke .
+      - name: Run one real turn and assert init + result
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          RUNTIME_DEFAULT_MODEL: ${{ secrets.RUNTIME_DEFAULT_MODEL }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY not configured -> skipping the real-turn smoke (not a failure)."
+            exit 0
+          fi
+          docker run -d --name rt \
+            -e ANTHROPIC_API_KEY -e ANTHROPIC_BASE_URL -e RUNTIME_DEFAULT_MODEL \
+            -e RUNTIME_HOSTNAME=0.0.0.0 -e RUNTIME_MAX_TURNS=3 \
+            -p 8080:8080 coding-agent-runtime:smoke
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS -N -X POST http://127.0.0.1:8080/sessions \
+            -H 'Content-Type: application/json' \
+            -d '{"prompt":"Reply with the single word: ok"}' | tee /tmp/sse.txt
+          echo "---- asserting SSE events ----"
+          grep -q '^event: init' /tmp/sse.txt
+          grep -q '^event: result' /tmp/sse.txt
+      - name: Runtime logs
+        if: always()
+        run: docker logs rt 2>&1 || true
+      - name: Cleanup
+        if: always()
+        run: docker rm -f rt || true
+
   audit:
     name: audit
     runs-on: ubuntu-latest

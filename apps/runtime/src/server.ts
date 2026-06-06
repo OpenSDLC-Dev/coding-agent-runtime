@@ -4,6 +4,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import type { RuntimeConfig } from "./agent/config.js";
 import type { QueryFn } from "./agent/runtime.js";
+import { startSessionGc } from "./agent/session-gc.js";
 import { SessionRegistry } from "./agent/session-store.js";
 import { registerSessionRoutes, type SessionSdk } from "./routes/sessions.js";
 
@@ -19,6 +20,10 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
   const { config, version = "0.0.0" } = deps;
   const registry = deps.registry ?? new SessionRegistry();
   const sdk: SessionSdk = deps.sdk ?? { getSessionInfo, getSessionMessages, deleteSession };
+
+  // Reclaim idle sessions' on-disk transcripts so a long-running container's disk does not fill up.
+  // No-op (and leaks no timer) unless RUNTIME_SESSION_TTL_MS > 0; the interval is unref()'d.
+  startSessionGc(registry, sdk, config);
 
   const app = new OpenAPIHono();
 
