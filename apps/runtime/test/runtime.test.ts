@@ -229,7 +229,7 @@ describe("runTurn telemetry", () => {
     const traceId = init?.data.traceId as string;
     expect(traceId).toMatch(/^[0-9a-f]{32}$/);
     expect(result?.data.traceId).toBe(traceId);
-    // TRACEPARENT 注入子 env，且其 trace-id 与本轮一致
+    // TRACEPARENT is injected into the child env, and its trace-id matches this turn
     expect(captured?.env?.TRACEPARENT).toContain(traceId);
   });
 });

@@ -7,11 +7,11 @@ services:
     env_file: .env
     environment:
       RUNTIME_HOSTNAME: 0.0.0.0
-      # —— runtime 自身 NodeSDK（仅 traces）——
+      # —— runtime's own NodeSDK (traces only) ——
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: coding-agent-runtime
-      # —— 子 CLI 原生 telemetry（经 buildChildEnv 继承 process.env）——
+      # —— Child CLI native telemetry (inherits process.env via buildChildEnv) ——
       CLAUDE_CODE_ENABLE_TELEMETRY: "1"
       CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: "1"
       CLAUDE_CODE_PROPAGATE_TRACEPARENT: "1"
@@ -20,7 +20,7 @@ services:
       OTEL_LOGS_EXPORTER: otlp
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_LOGS_EXPORT_INTERVAL: "1000"
-      # —— 前端深链目标（/config 透出）——
+      # —— Frontend deep-link target (exposed via /config) ——
       JAEGER_BASE_URL: http://localhost:16686
     ports:
       - "127.0.0.1:8080:8080"

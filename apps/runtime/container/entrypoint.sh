@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Runtime 容器入口：幂等写 CLAUDE.md + 配置 git/gh 认证 + 起服务。
+# Runtime container entrypoint: idempotently write CLAUDE.md + configure git/gh auth + start the service.
 set -euo pipefail
 
-# 1) 把镜像内置的固定 guidelines 幂等写到 user-level CLAUDE.md（settingSources:['user'] 从这里读）。
+# 1) Idempotently write the image's built-in fixed guidelines to the user-level CLAUDE.md (settingSources:['user'] reads from here).
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-/claude-config}"
 SRC_GUIDELINES="/app/apps/runtime/container/agent-CLAUDE.md"
 DEST_GUIDELINES="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
@@ -17,11 +17,11 @@ else
   echo "[entrypoint] WARNING: ${SRC_GUIDELINES} not found, skipping CLAUDE.md init" >&2
 fi
 
-# 2) 若提供 GH_TOKEN，让 git push/clone 也走 gh 凭据。
+# 2) If GH_TOKEN is provided, make git push/clone use gh credentials too.
 if [ -n "${GH_TOKEN:-}" ]; then
   echo "[entrypoint] configuring git to use gh credentials"
   gh auth setup-git
 fi
 
-# 3) exec node 成为 PID 1，正确转发 SIGTERM/SIGINT 做优雅停止。
+# 3) exec node to become PID 1, correctly forwarding SIGTERM/SIGINT for graceful shutdown.
 exec node /app/apps/runtime/dist/index.js

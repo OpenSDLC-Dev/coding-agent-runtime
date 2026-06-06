@@ -1,5 +1,5 @@
-# 全仓统一 LF 行尾。eol=lf 优先级高于 core.autocrlf，避免 Windows checkout 转 CRLF
-# 导致 biome 失败、容器入口 shebang 损坏。二进制由 text=auto 自动判定不受影响。
+# Enforce LF line endings repo-wide. eol=lf takes precedence over core.autocrlf, preventing Windows checkout from converting to CRLF
+# which would break biome and corrupt the container entrypoint shebang. Binaries are auto-detected by text=auto and unaffected.
 * text=auto eol=lf
 *.sh text eol=lf
 entrypoint.sh text eol=lf

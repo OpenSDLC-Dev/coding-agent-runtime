@@ -7,7 +7,7 @@ export function SpecPanel({ baseUrl }: Props) {
     <div className="spec">
       <p>
         <a href={`${baseUrl}/docs`} target="_blank" rel="noreferrer">
-          在新标签打开 Swagger UI
+          Open Swagger UI in a new tab
         </a>
         {" · "}
         <a href={`${baseUrl}/openapi.json`} target="_blank" rel="noreferrer">

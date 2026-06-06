@@ -4,7 +4,7 @@ export const StatusEnum = z.enum(["running", "idle", "error", "aborted"]);
 
 export const CreateSessionBody = z
   .object({
-    prompt: z.string().min(1).openapi({ example: "在 /workspace 建一个 hello.txt" }),
+    prompt: z.string().min(1).openapi({ example: "Create a hello.txt in /workspace" }),
     model: z.string().optional().openapi({ example: "MiniMax-M3" }),
   })
   .openapi("CreateSessionBody");

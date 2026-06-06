@@ -1,8 +1,8 @@
 import { context as otelContext, type Span, SpanKind, trace } from "@opentelemetry/api";
 import { getTracer } from "../telemetry.js";
 
-// 开 turn span（SpanKind.SERVER）。首轮 sessionId 未知，仅 resume 轮先带 conversation.id；
-// 首轮在 init 事件到达后由 runTurn 补设。
+// Start the turn span (SpanKind.SERVER). On the first turn the sessionId is unknown, so only resume turns carry conversation.id up front;
+// for the first turn, runTurn backfills it once the init event arrives.
 export function startTurnSpan(attrs: { model?: string; resumeId?: string }): Span {
   return getTracer().startSpan("agent.turn", {
     kind: SpanKind.SERVER,
@@ -14,15 +14,15 @@ export function startTurnSpan(attrs: { model?: string; resumeId?: string }): Spa
   });
 }
 
-// W3C traceparent：00-<trace-id>-<span-id>-<flags>。注入子 CLI 的 env，配合
-// CLAUDE_CODE_PROPAGATE_TRACEPARENT=1 让 CLI 原生 span 挂到 turn span 之下。
+// W3C traceparent: 00-<trace-id>-<span-id>-<flags>. Injected into the child CLI's env, combined with
+// CLAUDE_CODE_PROPAGATE_TRACEPARENT=1 so the CLI's native spans attach under the turn span.
 export function traceparentOf(span: Span): string {
   const sc = span.spanContext();
   const flags = (sc.traceFlags & 0x1).toString(16).padStart(2, "0");
   return `00-${sc.traceId}-${sc.spanId}-${flags}`;
 }
 
-// 在 turn span 之下开 tool 子 span（显式以 turn span 构造父 context，不依赖 active context）。
+// Start a tool child span under the turn span (build the parent context explicitly from the turn span rather than relying on the active context).
 export function startToolSpan(parent: Span, tool: { name: string; id: string }): Span {
   const ctx = trace.setSpan(otelContext.active(), parent);
   return getTracer().startSpan(

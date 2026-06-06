@@ -4,8 +4,8 @@ import type {
   PreToolUseHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 
-// 默认允许的命令（匹配 argv[0] 的 basename）。
-// gh/git/npm/uv 等是“有意出网口”（spec §6）；curl/wget/sudo/sh/bash/eval/xargs 故意不在内。
+// Default allowed commands (matched against the basename of argv[0]).
+// gh/git/npm/uv etc. are "intentional network egress points" (spec §6); curl/wget/sudo/sh/bash/eval/xargs are deliberately excluded.
 export const DEFAULT_BASH_ALLOWLIST: readonly string[] = [
   "git",
   "gh",
@@ -58,7 +58,7 @@ export const DEFAULT_BASH_ALLOWLIST: readonly string[] = [
   "date",
 ];
 
-// 命令包装器：剥掉它们（及其选项/数值参数前缀）后才是真正的 argv[0]。
+// Command wrappers: only after stripping them (and their option/numeric-argument prefixes) do we reach the real argv[0].
 const WRAPPERS = new Set([
   "timeout",
   "nice",
@@ -79,9 +79,9 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-// 把一条 shell 命令行按【未被引号包裹】的控制运算符拆成子命令片段。
-// 拆分点：换行、; & |（含 && || |&）、子shell/命令替换边界 ( ) $( ` 。
-// 单引号内一切原义；双引号内运算符不拆，但命令替换/反引号仍有效（在双引号内也拆）。
+// Split a shell command line into sub-command fragments at control operators that are NOT inside quotes.
+// Split points: newline, ; & | (including && || |&), and sub-shell / command-substitution boundaries ( ) $( ` .
+// Inside single quotes everything is literal; inside double quotes operators are not split, but command substitution / backticks still apply (we split inside double quotes too).
 export function splitCommands(command: string): string[] {
   const out: string[] = [];
   let cur = "";
@@ -155,8 +155,8 @@ export function splitCommands(command: string): string[] {
       continue;
     }
     if (c === ">" || c === "<") {
-      // 重定向运算符（如 `2>&1`、`>&2`、`>>out`、`> file`）：原样保留在片段里，
-      // 并吞掉紧随的 `>`(>>) 与 `&`(>&)，避免 `>&` 里的 `&` 触发后台/控制切分。
+      // Redirection operators (e.g. `2>&1`, `>&2`, `>>out`, `> file`): keep them verbatim in the fragment,
+      // and consume any following `>` (>>) and `&` (>&) so the `&` in `>&` does not trigger a background/control split.
       cur += c;
       let j = i + 1;
       if (command[j] === c) {
@@ -171,7 +171,7 @@ export function splitCommands(command: string): string[] {
       continue;
     }
     if (c === "&") {
-      // `&>`(及 `&>>`) 是重定向而非后台运算符：不切分，`&` 原样保留，`>` 交给上面分支处理。
+      // `&>` (and `&>>`) is a redirection, not a background operator: do not split, keep `&` verbatim, and let the branch above handle the `>`.
       if (next === ">") {
         cur += c;
         continue;
@@ -191,7 +191,7 @@ export function splitCommands(command: string): string[] {
   return out;
 }
 
-// 把一个子命令片段切成词（按空白，尊重引号、剥引号）。
+// Split a sub-command fragment into words (by whitespace, respecting quotes and stripping them).
 function tokenize(sub: string): string[] {
   const words: string[] = [];
   let cur = "";
@@ -257,7 +257,7 @@ function tokenize(sub: string): string[] {
   return words;
 }
 
-// 从子命令片段解析真正的可执行名（basename）；空 / 仅环境赋值返回 undefined。
+// Resolve the real executable name (basename) from a sub-command fragment; returns undefined when empty / only environment assignments.
 export function resolveExecutable(sub: string): string | undefined {
   let words = tokenize(sub);
   for (;;) {
@@ -286,7 +286,7 @@ export interface BashCheckResult {
   reason?: string;
 }
 
-// 校验整条命令：任一子命令的 argv[0] 不在白名单即拒绝。
+// Validate the whole command: reject if any sub-command's argv[0] is not in the allowlist.
 export function checkBashCommand(command: string, allow: ReadonlySet<string>): BashCheckResult {
   for (const sub of splitCommands(command)) {
     const exe = resolveExecutable(sub);
@@ -295,14 +295,14 @@ export function checkBashCommand(command: string, allow: ReadonlySet<string>): B
       return {
         allowed: false,
         offending: exe,
-        reason: `Bash 命令 \`${exe}\` 不在白名单内。允许的命令：${[...allow].join(", ")}。如需放开，配置 RUNTIME_BASH_ALLOWLIST。`,
+        reason: `Bash command \`${exe}\` is not in the allowlist. Allowed commands: ${[...allow].join(", ")}. To permit it, configure RUNTIME_BASH_ALLOWLIST.`,
       };
     }
   }
   return { allowed: true };
 }
 
-// PreToolUse hook 工厂：仅拦 Bash；不在白名单则 deny（绕过 canUseTool、连 bypassPermissions 都拦）。
+// PreToolUse hook factory: only intercepts Bash; deny when not in the allowlist (bypasses canUseTool, blocks even under bypassPermissions).
 export function createBashAllowlistHook(allowlist: readonly string[]): HookCallback {
   const allow = new Set(allowlist);
   return async (input): Promise<HookJSONOutput> => {
@@ -317,7 +317,7 @@ export function createBashAllowlistHook(allowlist: readonly string[]): HookCallb
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
-        permissionDecisionReason: res.reason ?? `命令不在白名单：${res.offending ?? "?"}`,
+        permissionDecisionReason: res.reason ?? `Command not in allowlist: ${res.offending ?? "?"}`,
       },
     };
   };

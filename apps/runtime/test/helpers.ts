@@ -20,7 +20,7 @@ export const testConfig: RuntimeConfig = {
   heartbeatMs: 0,
 };
 
-// 一个成功单轮的最小消息序列：init -> assistant(text + tool_use) -> user(tool_result) -> result(success)
+// Minimal message sequence for a successful single turn: init -> assistant(text + tool_use) -> user(tool_result) -> result(success)
 export const sampleMessages: SDKMessage[] = [
   {
     type: "system",
@@ -78,7 +78,7 @@ export function fakeQueryFn(messages: SDKMessage[]): QueryFn {
     })();
 }
 
-// 把一次 app.request 的 SSE 响应读成事件名数组 + 原文，便于断言。
+// Read an app.request SSE response into an array of event names plus the raw text, to make assertions easier.
 export async function collectSse(res: Response): Promise<{ text: string; events: string[] }> {
   const text = await res.text();
   const events = [...text.matchAll(/^event: (.+)$/gm)].map((m) => m[1] as string);

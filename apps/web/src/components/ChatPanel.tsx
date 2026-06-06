@@ -66,7 +66,7 @@ export function ChatPanel({ baseUrl, model, jaegerBaseUrl }: Props) {
     <div className="chat">
       <div className="chat-log">
         {lines.map((l, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 对话日志仅追加
+          // biome-ignore lint/suspicious/noArrayIndexKey: conversation log is append-only
           <div key={i} className={`line line-${l.kind}`}>
             {l.text}
           </div>
@@ -76,19 +76,19 @@ export function ChatPanel({ baseUrl, model, jaegerBaseUrl }: Props) {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="给 agent 的指令…"
+          placeholder="Instructions for the agent…"
           aria-label="prompt"
         />
         <div className="chat-actions">
           <button type="button" onClick={send} disabled={busy}>
-            {sessionId ? "续轮发送" : "发送"}
+            {sessionId ? "Send next turn" : "Send"}
           </button>
           <button
             type="button"
             onClick={() => sessionId && stopSession(baseUrl, sessionId)}
             disabled={!busy || !sessionId}
           >
-            停止
+            Stop
           </button>
           <button
             type="button"
@@ -98,14 +98,14 @@ export function ChatPanel({ baseUrl, model, jaegerBaseUrl }: Props) {
             }}
             disabled={busy}
           >
-            新建会话
+            New session
           </button>
-          <span className="sid">{sessionId ? `会话 ${sessionId}` : "未开始"}</span>
+          <span className="sid">{sessionId ? `Session ${sessionId}` : "Not started"}</span>
           {(() => {
             const url = traceUrl(jaegerBaseUrl, lastTraceId);
             return url ? (
               <a className="trace-link" href={url} target="_blank" rel="noreferrer">
-                在 Jaeger 打开 trace
+                Open trace in Jaeger
               </a>
             ) : null;
           })()}

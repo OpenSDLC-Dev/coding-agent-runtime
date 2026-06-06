@@ -25,7 +25,7 @@ export function App() {
         <>
           <div className="toolbar">
             <button type="button" onClick={() => setTab("chat")} disabled={tab === "chat"}>
-              对话
+              Chat
             </button>
             <button type="button" onClick={() => setTab("spec")} disabled={tab === "spec"}>
               spec

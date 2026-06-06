@@ -23,7 +23,7 @@ export interface RunTurnInput {
   abortController?: AbortController;
 }
 
-// 把 process.env（值可能 undefined）规整为 query() 需要的 Record<string,string>，再叠加运行时覆盖。
+// Normalize process.env (whose values may be undefined) into the Record<string,string> that query() expects, then layer on runtime overrides.
 function buildChildEnv(cfg: RuntimeConfig): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -109,21 +109,21 @@ export async function* runTurn(
   const toolSpans = new Map<string, Span>();
 
   const env = buildChildEnv(cfg);
-  // 仅当 span context 有效（已起真实 TracerProvider）才注入 TRACEPARENT，避免给子 CLI 喂全零 id。
+  // Only inject TRACEPARENT when the span context is valid (a real TracerProvider has started), to avoid feeding the child CLI an all-zero id.
   if (traceId) env.TRACEPARENT = traceparentOf(span);
 
   const options: Options = {
     cwd: cfg.cwd,
     model: input.model ?? cfg.defaultModel,
-    // 推理强度默认拉满（cfg.effort 默认 "max"，可经 RUNTIME_EFFORT 调整）；详见 config.ts。
+    // Reasoning effort is maxed out by default (cfg.effort defaults to "max", adjustable via RUNTIME_EFFORT); see config.ts for details.
     effort: cfg.effort,
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
-    // P0 安全兜底：deny 永远赢，挡住联网/提权/危险删除。这是不依赖文件设置的硬兜底；
-    // 完整的 PreToolUse Bash 白名单（解析 && | ; 拆分、剥包装器）仍排在 P3（spec §6）。
+    // P0 safety fallback: deny always wins, blocking network access / privilege escalation / dangerous deletes. This is a hard fallback that does not depend on file settings;
+    // the full PreToolUse Bash allowlist (parsing && | ; splits, stripping wrappers) is still scheduled for P3 (spec §6).
     disallowedTools: ["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(rm -rf:*)"],
-    // P3 第 1 层：解析式 Bash 白名单（PreToolUse deny 绕过 canUseTool、连 bypass 都拦、覆盖子 agent）。
-    // 与上面的 disallowedTools 兜底叠加：deny 永远赢。
+    // P3 layer 1: parsing-based Bash allowlist (PreToolUse deny bypasses canUseTool, blocks even bypass mode, and covers sub-agents).
+    // Layered on top of the disallowedTools fallback above: deny always wins.
     hooks: {
       PreToolUse: [{ matcher: "Bash", hooks: [createBashAllowlistHook(cfg.bashAllowlist)] }],
     },
@@ -132,8 +132,8 @@ export async function* runTurn(
     includePartialMessages: cfg.includePartial,
     env,
     abortController: input.abortController,
-    // SDK/CLI 解耦：指向独立安装的 Claude Code CLI 原生二进制（设置时 SDK 直接 spawn 它，
-    // 走 stdio/stream-json）。未设则 SDK 用自带平台二进制。
+    // SDK/CLI decoupling: points to the separately installed native Claude Code CLI binary (when set, the SDK spawns it directly,
+    // over stdio/stream-json). When unset, the SDK falls back to its bundled platform binary.
     ...(cfg.claudeCliPath ? { pathToClaudeCodeExecutable: cfg.claudeCliPath } : {}),
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
@@ -183,7 +183,7 @@ export async function* runTurn(
     span.setStatus({ code: SpanStatusCode.ERROR });
     throw err;
   } finally {
-    for (const ts of toolSpans.values()) ts.end(); // 收尾未配对的 tool span
+    for (const ts of toolSpans.values()) ts.end(); // Close out any unpaired tool spans
     span.end();
   }
 }

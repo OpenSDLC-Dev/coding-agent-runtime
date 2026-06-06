@@ -22,7 +22,7 @@ import {
   TranscriptMessage,
 } from "../schemas/index.js";
 
-// 注入式 SDK 句柄（测试传假实现；生产由 server.ts 默认接真 SDK）。
+// Injectable SDK handle (tests pass a fake implementation; in production server.ts wires the real SDK by default).
 export interface SessionSdk {
   getSessionInfo?: (
     id: string,
@@ -57,8 +57,8 @@ function readBody(c: Context): Promise<{ prompt?: unknown; model?: unknown }> {
   return c.req.json().catch(() => ({}));
 }
 
-// SSE 心跳：每 ms 写一条注释行 ": keepalive\n\n"，防反代 idle 断连（spec §4.2/§5）。
-// 抽成独立函数便于用 fake timer 单测；整条注释一次性写入（原子块，不与 writeSSE 交错破帧）。
+// SSE heartbeat: write a comment line ": keepalive\n\n" every `ms` to prevent reverse-proxy idle disconnects (spec §4.2/§5).
+// Extracted into a standalone function so it can be unit-tested with a fake timer; the whole comment is written at once (atomic block, not interleaved with writeSSE to avoid breaking frames).
 export interface HeartbeatStream {
   readonly aborted: boolean;
   readonly closed: boolean;
@@ -71,14 +71,14 @@ export function startHeartbeat(stream: HeartbeatStream, ms: number): () => void 
     if (stream.aborted || stream.closed) return;
     void stream.write(": keepalive\n\n").catch(() => {});
   }, ms);
-  // 双保险：流结束会 clearInterval；unref 避免空转计时器拖住进程退出。
+  // Belt and suspenders: stream end will clearInterval; unref prevents an idle timer from holding the process open.
   (timer as { unref?: () => void }).unref?.();
   return () => clearInterval(timer);
 }
 
-// 共享一轮流式执行：先 next() 一次拿 init 事件并写入 registry，再流式输出全部事件。
-// 用 next() 而非 for-await+break 避免关闭 generator（break 会触发 return()）。
-// 这样在 await streamTurn() 解析后，registry 里的 sessionId 就已经就绪（测试无需读 body）。
+// Shared single-turn streaming execution: call next() once to grab the init event and write it into the registry, then stream out all events.
+// Use next() rather than for-await+break to avoid closing the generator (break triggers return()).
+// This way, after `await streamTurn()` resolves, the sessionId in the registry is already ready (tests don't need to read the body).
 async function streamTurn(
   c: Context,
   input: { prompt: string; model?: string; resumeId?: string },
@@ -87,7 +87,7 @@ async function streamTurn(
   const abortController = new AbortController();
   const gen = runTurn({ ...input, abortController }, deps.config, deps.queryFn);
 
-  // 预读第一个事件（通常是 init），登记 session；不用 break 避免关闭 generator。
+  // Pre-read the first event (usually init), register the session; don't use break to avoid closing the generator.
   let sid = input.resumeId;
   let firstEvt: SseEvent | undefined;
 
@@ -102,12 +102,12 @@ async function streamTurn(
           abortController,
         });
       }
-      // 把本轮 traceId 透出到响应头（前端可据此深链 Jaeger；需 CORS exposeHeaders）。
+      // Surface this turn's traceId in the response header (the frontend can deep-link to Jaeger from it; requires CORS exposeHeaders).
       const traceId = firstEvt.data.traceId;
       if (typeof traceId === "string") c.header("X-Trace-Id", traceId);
     }
   } catch (preErr) {
-    // 预读失败：通过 SSE 将错误通知客户端，避免静默空流。
+    // Pre-read failed: notify the client of the error over SSE to avoid a silent empty stream.
     const correlationId = randomUUID();
     console.error(`[sessions] pre-read error correlationId=${correlationId}:`, preErr);
     return streamSSE(c, async (stream) => {
@@ -121,7 +121,7 @@ async function streamTurn(
   return streamSSE(c, async (stream) => {
     const stopHeartbeat = startHeartbeat(stream, deps.config.heartbeatMs);
     try {
-      // 先写出预读的第一个事件
+      // First write out the pre-read first event
       if (firstEvt && !stream.aborted) {
         await stream.writeSSE({
           event: firstEvt.event,
@@ -130,7 +130,7 @@ async function streamTurn(
         });
       }
       try {
-        // 继续消费剩余事件
+        // Continue consuming the remaining events
         for await (const evt of gen) {
           if (stream.aborted) break;
           if (evt.event === "assistant" && sid) {
@@ -180,28 +180,32 @@ async function streamTurn(
 export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps): void {
   const { config } = deps;
 
-  // ---- OpenAPI 登记（SSE 端点用 registerPath 手动登记单事件载荷）----
+  // ---- OpenAPI registration (SSE endpoints use registerPath to manually register the single-event payload) ----
   for (const path of ["/sessions", "/sessions/{id}/turns"]) {
     app.openAPIRegistry.registerPath({
       method: "post",
       path,
-      summary: path === "/sessions" ? "创建会话并执行首轮（SSE）" : "追加一轮（resume，SSE）",
+      summary:
+        path === "/sessions"
+          ? "Create a session and run the first turn (SSE)"
+          : "Append a turn (resume, SSE)",
       tags: ["sessions"],
       request: {
         body: { content: { "application/json": { schema: CreateSessionBody } } },
       },
       responses: {
         200: {
-          description: "text/event-stream：本轮事件（单事件载荷见 schema）",
+          description:
+            "text/event-stream: this turn's events (see schema for the single-event payload)",
           content: { "text/event-stream": { schema: SseEventSchema } },
         },
-        400: { description: "prompt 缺失或 model 不在白名单" },
-        404: { description: "会话不存在（仅 turns）" },
+        400: { description: "prompt is missing or model is not on the allowlist" },
+        404: { description: "session does not exist (turns only)" },
       },
     });
   }
 
-  // ---- POST /sessions：首轮 ----
+  // ---- POST /sessions: first turn ----
   app.post("/sessions", async (c) => {
     const body = await readBody(c);
     const prompt = typeof body.prompt === "string" ? body.prompt : "";
@@ -213,7 +217,7 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     return streamTurn(c, { prompt, model }, deps);
   });
 
-  // ---- POST /sessions/:id/turns：续写 ----
+  // ---- POST /sessions/:id/turns: continuation ----
   app.post("/sessions/:id/turns", async (c) => {
     const id = c.req.param("id");
     if (!deps.registry.has(id)) {
@@ -232,9 +236,9 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     return streamTurn(c, { prompt, model, resumeId: id }, deps);
   });
 
-  // ---- REST 端点 ----
+  // ---- REST endpoints ----
 
-  // 把 registry 记录投影成 list item（model 用 null 兼容 schema 的 nullable）。
+  // Project a registry record into a list item (use null for model to be compatible with the schema's nullable).
   const toListItem = (r: SessionRecord) => ({
     id: r.id,
     model: r.model ?? null,
@@ -254,10 +258,10 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       method: "get",
       path: "/sessions",
       tags: ["sessions"],
-      summary: "列出会话（运行态视图）",
+      summary: "List sessions (runtime-state view)",
       responses: {
         200: {
-          description: "会话列表",
+          description: "Session list",
           content: { "application/json": { schema: SessionListItem.array() } },
         },
       },
@@ -271,11 +275,17 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       method: "get",
       path: "/sessions/{id}",
       tags: ["sessions"],
-      summary: "会话信息（registry + 盘上 getSessionInfo）",
+      summary: "Session info (registry + on-disk getSessionInfo)",
       request: { params: SessionIdParam },
       responses: {
-        200: { description: "会话信息", content: { "application/json": { schema: SessionInfo } } },
-        404: { description: "未找到", content: { "application/json": { schema: ErrorResponse } } },
+        200: {
+          description: "Session info",
+          content: { "application/json": { schema: SessionInfo } },
+        },
+        404: {
+          description: "Not found",
+          content: { "application/json": { schema: ErrorResponse } },
+        },
       },
     }),
     async (c) => {
@@ -315,11 +325,11 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       method: "get",
       path: "/sessions/{id}/transcript",
       tags: ["sessions"],
-      summary: "完整 transcript（getSessionMessages）",
+      summary: "Full transcript (getSessionMessages)",
       request: { params: SessionIdParam },
       responses: {
         200: {
-          description: "消息列表",
+          description: "Message list",
           content: { "application/json": { schema: TranscriptMessage.array() } },
         },
       },
@@ -339,11 +349,11 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       method: "post",
       path: "/sessions/{id}/stop",
       tags: ["sessions"],
-      summary: "中止当前轮（abortController.abort()）",
+      summary: "Abort the current turn (abortController.abort())",
       request: { params: SessionIdParam },
       responses: {
         200: {
-          description: "是否成功中止",
+          description: "Whether the abort succeeded",
           content: { "application/json": { schema: StopResponse } },
         },
       },
@@ -360,10 +370,13 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       method: "delete",
       path: "/sessions/{id}",
       tags: ["sessions"],
-      summary: "删除会话（盘上 deleteSession + 清 registry）",
+      summary: "Delete a session (on-disk deleteSession + clear registry)",
       request: { params: SessionIdParam },
       responses: {
-        200: { description: "已删除", content: { "application/json": { schema: DeleteResponse } } },
+        200: {
+          description: "Deleted",
+          content: { "application/json": { schema: DeleteResponse } },
+        },
       },
     }),
     async (c) => {

@@ -1,27 +1,27 @@
-# 依赖
+# Dependencies
 node_modules/
 .pnpm-store/
 
-# 环境 / 密钥（ANTHROPIC_API_KEY、GH_TOKEN 等）
+# Environment / secrets (ANTHROPIC_API_KEY, GH_TOKEN, etc.)
 .env
 .env.*
 !.env.example
 
-# 构建产物
+# Build artifacts
 dist/
 build/
 *.tsbuildinfo
 
-# 日志
+# Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
 
-# 系统 / 编辑器
+# System / editor
 .DS_Store
 Thumbs.db
 
-# docker-compose 运行态产物（bind mount 目标）
+# docker-compose runtime artifacts (bind mount target)
 .runtime/
 
 # Internal design/planning docs — kept local, not published to the public repo

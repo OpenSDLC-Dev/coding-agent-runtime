@@ -3,7 +3,7 @@ import { getConfig, getHealth, type RuntimeConfigDto } from "../lib/api";
 
 interface Props {
   baseUrl: string;
-  // 成功时上抛最终编辑后的 baseUrl + config（App.tsx 据此记下当前 baseUrl）。
+  // On success, bubble up the final edited baseUrl + config (App.tsx uses this to record the current baseUrl).
   onConnected: (baseUrl: string, cfg: RuntimeConfigDto) => void;
 }
 
@@ -36,7 +36,7 @@ export function ConnectionBar({ baseUrl: initial, onConnected }: Props) {
         aria-label="runtime base url"
       />
       <button type="button" onClick={connect}>
-        连接
+        Connect
       </button>
       <span className={`status status-${status}`}>{status}</span>
     </div>

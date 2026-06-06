@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 可选 egress 收紧（opt-in；默认 entrypoint 不调用）。
-# 前提：容器有 NET_ADMIN（compose: cap_add:[NET_ADMIN]）且装了 iptables。
-# 策略：默认 DROP 出站，仅放行 回环 + 已建立连接 + DNS + 白名单域名解析出的 IP(:80/:443)。
-# 域名白名单经 EGRESS_ALLOW_DOMAINS（逗号分隔）传入；ANTHROPIC_BASE_URL 的 host 自动并入。
-# 已知局限：*.githubusercontent.com / CDN 多 IP 且会轮换 → 启动时快照的 IP 可能过期（见 SECURITY-p3.md）。
+# Optional egress hardening (opt-in; not invoked by the default entrypoint).
+# Prerequisite: the container has NET_ADMIN (compose: cap_add:[NET_ADMIN]) and iptables installed.
+# Policy: DROP outbound by default, only allow loopback + established connections + DNS + the IPs (:80/:443) resolved from allowlisted domains.
+# The domain allowlist is passed via EGRESS_ALLOW_DOMAINS (comma-separated); the host of ANTHROPIC_BASE_URL is merged in automatically.
+# Known limitation: *.githubusercontent.com / CDNs have many IPs that rotate -> the IPs snapshotted at startup may become stale (see SECURITY-p3.md).
 set -euo pipefail
 
 DOMAINS="${EGRESS_ALLOW_DOMAINS:-github.com,api.github.com,codeload.github.com,objects.githubusercontent.com,raw.githubusercontent.com,registry.npmjs.org,pypi.org,files.pythonhosted.org}"

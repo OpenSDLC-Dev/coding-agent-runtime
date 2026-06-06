@@ -1,6 +1,6 @@
 import type { Span } from "@opentelemetry/api";
 
-// result 事件载荷里与用量相关的子集（来自 SDKResultMessage 经 mapMessage）。
+// The usage-related subset of the result event payload (from SDKResultMessage via mapMessage).
 export interface ResultUsageData {
   usage?: {
     input_tokens?: number;
@@ -12,8 +12,8 @@ export interface ResultUsageData {
   num_turns?: number;
 }
 
-// 把本轮 token/费用打到 turn span（gen_ai.usage.*）。第三方端点 cost 可能失真（spec §7.3），
-// 仅 token 可信；属性照打，解读由后端/看板负责。
+// Emit this turn's tokens/cost onto the turn span (gen_ai.usage.*). Third-party endpoint cost may be inaccurate (spec §7.3),
+// only tokens are trustworthy; emit the attributes anyway and leave interpretation to the backend/dashboard.
 export function setUsageAttributes(span: Span, d: ResultUsageData): void {
   const u = d.usage ?? {};
   if (u.input_tokens != null) span.setAttribute("gen_ai.usage.input_tokens", u.input_tokens);

@@ -75,7 +75,7 @@ describe("SSE routes", () => {
 
   it("POST /sessions/:id/turns resumes a known session", async () => {
     const { app, registry } = makeApp();
-    // 先建会话
+    // create the session first
     await app.request("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -94,7 +94,7 @@ describe("SSE routes", () => {
   });
 
   it("emits an aborted event when the active turn is stopped mid-flight", async () => {
-    // 假 query：吐 init 后挂起，直到 abortController 触发（带 already-aborted 兜底，避免错过事件）。
+    // fake query: emit init then hang until abortController fires (with an already-aborted fallback to avoid missing the event).
     const queryFn: QueryFn = (args) => {
       const signal = args.options.abortController?.signal;
       return (async function* () {
@@ -112,7 +112,7 @@ describe("SSE routes", () => {
       body: JSON.stringify({ prompt: "hi" }),
     });
     expect(res.status).toBe(200);
-    // 预读 init 已完成、会话已登记；中止当前轮。
+    // init has been pre-read and the session is registered; abort the current turn.
     expect(registry.abort("sess-1")).toBe(true);
     const { events } = await collectSse(res);
     expect(events).toContain("aborted");

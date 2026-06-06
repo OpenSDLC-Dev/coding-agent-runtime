@@ -8,8 +8,9 @@ const TRACER_NAME = "coding-agent-runtime";
 
 let sdk: NodeSDK | undefined;
 
-// 仅当配置了 OTLP 端点（compose 起栈）才启动真实导出；否则 span 退化为 no-op，
-// 裸 docker run 不产生连接错误。返回是否启动了真实 SDK；幂等。
+// Only start real export when an OTLP endpoint is configured (compose stack up); otherwise spans
+// degrade to no-ops so a bare docker run produces no connection errors. Returns whether the real
+// SDK was started; idempotent.
 export function startTelemetry(env: NodeJS.ProcessEnv = process.env, version = "0.0.0"): boolean {
   if (sdk) return true;
   if (!env.OTEL_EXPORTER_OTLP_ENDPOINT) return false;
@@ -18,7 +19,7 @@ export function startTelemetry(env: NodeJS.ProcessEnv = process.env, version = "
       [ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME || TRACER_NAME,
       [ATTR_SERVICE_VERSION]: version,
     }),
-    // OTLPTraceExporter 从 OTEL_EXPORTER_OTLP_ENDPOINT 读端点（自动追加 /v1/traces）。
+    // OTLPTraceExporter reads the endpoint from OTEL_EXPORTER_OTLP_ENDPOINT (auto-appends /v1/traces).
     traceExporter: new OTLPTraceExporter(),
   });
   sdk.start();

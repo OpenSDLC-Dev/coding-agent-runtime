@@ -10,15 +10,15 @@ processors:
   batch: {}
 
 exporters:
-  # 转发 trace 到 Jaeger（Jaeger all-in-one 开 OTLP gRPC 4317）
+  # Forward traces to Jaeger (Jaeger all-in-one exposes OTLP gRPC on 4317)
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
-  # 暴露 metrics 给 Prometheus 抓取
+  # Expose metrics for Prometheus to scrape
   prometheus:
     endpoint: 0.0.0.0:8889
-  # logs 落到 collector 自身日志（spec §3.3 OTEL_LOGS_EXPORTER=otlp 的接收端）
+  # logs land in the collector's own log output (the receiver end of spec §3.3 OTEL_LOGS_EXPORTER=otlp)
   debug:
     verbosity: basic
 

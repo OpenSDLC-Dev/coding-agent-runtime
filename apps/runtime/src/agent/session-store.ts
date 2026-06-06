@@ -15,7 +15,7 @@ export interface SessionRecord {
 
 const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
-// 尽力而为：从编辑类 tool_use 的 input 提取改动文件路径。
+// Best effort: extract changed file paths from the input of edit-type tool_use calls.
 export function extractChangedFiles(
   toolUses: ReadonlyArray<{ name: string; input: unknown }>,
 ): string[] {
@@ -34,8 +34,8 @@ export function extractChangedFiles(
   return files;
 }
 
-// 进程内会话注册表：运行态视图（轮次/累计用量/费用/状态/改动文件 + 活跃轮的 AbortController）。
-// 容器无状态 —— 持久真相在挂载盘的 transcript；本表是运行期便利，重启即丢可接受。
+// In-process session registry: a runtime-state view (turns/cumulative usage/cost/status/changed files + the active turn's AbortController).
+// The container is stateless — the durable source of truth is the transcript on the mounted disk; this table is a runtime convenience, and losing it on restart is acceptable.
 export class SessionRegistry {
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly active = new Map<string, AbortController>();
