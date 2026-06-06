@@ -6,6 +6,7 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { QueryFn } from "../src/agent/runtime.js";
 import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
 import { collectSse, fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
@@ -90,6 +91,32 @@ describe("SSE routes", () => {
     const { events } = await collectSse(res);
     expect(events).toContain("result");
     expect(registry.get("sess-1")?.turns).toBe(2);
+  });
+
+  it("emits an aborted event when the active turn is stopped mid-flight", async () => {
+    // 假 query：吐 init 后挂起，直到 abortController 触发（带 already-aborted 兜底，避免错过事件）。
+    const queryFn: QueryFn = (args) => {
+      const signal = args.options.abortController?.signal;
+      return (async function* () {
+        yield sampleMessages[0] as never; // init (sess-1)
+        await new Promise<void>((_, reject) => {
+          if (signal?.aborted) return reject(new Error("aborted"));
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        });
+      })();
+    };
+    const { app, registry } = makeApp({ queryFn });
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    // 预读 init 已完成、会话已登记；中止当前轮。
+    expect(registry.abort("sess-1")).toBe(true);
+    const { events } = await collectSse(res);
+    expect(events).toContain("aborted");
+    expect(registry.get("sess-1")?.status).toBe("aborted");
   });
 
   describe("with telemetry active", () => {
