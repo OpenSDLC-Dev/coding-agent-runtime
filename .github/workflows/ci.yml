@@ -69,6 +69,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          # No cache here: this job runs `pnpm audit` straight from the lockfile
+          # without `pnpm install`, so there is no pnpm store to cache.
       - name: Audit dependencies (fail on high or critical)
         run: pnpm audit --audit-level high
