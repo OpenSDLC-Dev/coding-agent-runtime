@@ -1,6 +1,7 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "../src/agent/config.js";
 import type { QueryFn } from "../src/agent/runtime.js";
+import { DEFAULT_BASH_ALLOWLIST } from "../src/permissions/bash-allowlist.js";
 
 export const testConfig: RuntimeConfig = {
   anthropicApiKey: "sk-test",
@@ -15,6 +16,8 @@ export const testConfig: RuntimeConfig = {
   hostname: "127.0.0.1",
   claudeCliPath: undefined,
   effort: "max",
+  bashAllowlist: [...DEFAULT_BASH_ALLOWLIST],
+  heartbeatMs: 0,
 };
 
 // 一个成功单轮的最小消息序列：init -> assistant(text + tool_use) -> user(tool_result) -> result(success)

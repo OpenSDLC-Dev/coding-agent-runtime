@@ -89,8 +89,21 @@ ENV DISABLE_AUTOUPDATER=1 \
     RUNTIME_HOSTNAME=0.0.0.0 \
     RUNTIME_CLAUDE_CLI_PATH=/usr/local/bin/claude \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    NPM_CONFIG_CACHE=/tmp/.npm \
+    UV_CACHE_DIR=/tmp/.uv \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    XDG_DATA_HOME=/tmp/.local/share \
+    GH_CONFIG_DIR=/tmp/.config/gh \
+    GIT_CONFIG_GLOBAL=/tmp/.gitconfig \
+    PNPM_HOME=/tmp/.pnpm \
     PATH=/home/app/.local/share/pnpm:/home/app/.local/bin:/usr/local/bin:$PATH
 
 EXPOSE 8080
+
+# ---- 纵深防御：移除仅构建期用到的 curl/wget（运行时由白名单+disallowedTools 已禁，这里连二进制都不留）----
+USER root
+RUN apt-get purge -y curl wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+USER app
 
 ENTRYPOINT ["/app/apps/runtime/container/entrypoint.sh"]

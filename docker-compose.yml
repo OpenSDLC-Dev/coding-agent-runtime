@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: apps/runtime/Dockerfile
-    image: coding-agent-runtime:p2
+    image: coding-agent-runtime:p3
     env_file: .env
     environment:
       RUNTIME_HOSTNAME: 0.0.0.0
@@ -27,6 +27,16 @@ services:
     volumes:
       - ./.runtime/workspace:/workspace
       - ./.runtime/claude-config:/claude-config
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
     depends_on:
       - otel-collector
 

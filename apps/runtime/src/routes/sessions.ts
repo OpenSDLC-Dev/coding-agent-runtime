@@ -57,6 +57,25 @@ function readBody(c: Context): Promise<{ prompt?: unknown; model?: unknown }> {
   return c.req.json().catch(() => ({}));
 }
 
+// SSE 心跳：每 ms 写一条注释行 ": keepalive\n\n"，防反代 idle 断连（spec §4.2/§5）。
+// 抽成独立函数便于用 fake timer 单测；整条注释一次性写入（原子块，不与 writeSSE 交错破帧）。
+export interface HeartbeatStream {
+  readonly aborted: boolean;
+  readonly closed: boolean;
+  write(input: string): Promise<unknown>;
+}
+
+export function startHeartbeat(stream: HeartbeatStream, ms: number): () => void {
+  if (ms <= 0) return () => {};
+  const timer = setInterval(() => {
+    if (stream.aborted || stream.closed) return;
+    void stream.write(": keepalive\n\n").catch(() => {});
+  }, ms);
+  // 双保险：流结束会 clearInterval；unref 避免空转计时器拖住进程退出。
+  (timer as { unref?: () => void }).unref?.();
+  return () => clearInterval(timer);
+}
+
 // 共享一轮流式执行：先 next() 一次拿 init 事件并写入 registry，再流式输出全部事件。
 // 用 next() 而非 for-await+break 避免关闭 generator（break 会触发 return()）。
 // 这样在 await streamTurn() 解析后，registry 里的 sessionId 就已经就绪（测试无需读 body）。
@@ -100,55 +119,60 @@ async function streamTurn(
   }
 
   return streamSSE(c, async (stream) => {
-    // 先写出预读的第一个事件
-    if (firstEvt && !stream.aborted) {
-      await stream.writeSSE({
-        event: firstEvt.event,
-        data: JSON.stringify(firstEvt.data),
-        ...(firstEvt.id ? { id: firstEvt.id } : {}),
-      });
-    }
+    const stopHeartbeat = startHeartbeat(stream, deps.config.heartbeatMs);
     try {
-      // 继续消费剩余事件
-      for await (const evt of gen) {
-        if (stream.aborted) break;
-        if (evt.event === "assistant" && sid) {
-          const toolUses = (evt.data.toolUses ?? []) as Array<{ name: string; input: unknown }>;
-          deps.registry.trackChangedFiles(sid, extractChangedFiles(toolUses));
-        } else if (evt.event === "result" && sid) {
-          const d = evt.data as {
-            usage?: { input_tokens?: number; output_tokens?: number };
-            total_cost_usd?: number;
-          };
-          deps.registry.recordResult(sid, {
-            inputTokens: d.usage?.input_tokens ?? 0,
-            outputTokens: d.usage?.output_tokens ?? 0,
-            costUsd: d.total_cost_usd ?? 0,
+      // 先写出预读的第一个事件
+      if (firstEvt && !stream.aborted) {
+        await stream.writeSSE({
+          event: firstEvt.event,
+          data: JSON.stringify(firstEvt.data),
+          ...(firstEvt.id ? { id: firstEvt.id } : {}),
+        });
+      }
+      try {
+        // 继续消费剩余事件
+        for await (const evt of gen) {
+          if (stream.aborted) break;
+          if (evt.event === "assistant" && sid) {
+            const toolUses = (evt.data.toolUses ?? []) as Array<{ name: string; input: unknown }>;
+            deps.registry.trackChangedFiles(sid, extractChangedFiles(toolUses));
+          } else if (evt.event === "result" && sid) {
+            const d = evt.data as {
+              usage?: { input_tokens?: number; output_tokens?: number };
+              total_cost_usd?: number;
+            };
+            deps.registry.recordResult(sid, {
+              inputTokens: d.usage?.input_tokens ?? 0,
+              outputTokens: d.usage?.output_tokens ?? 0,
+              costUsd: d.total_cost_usd ?? 0,
+            });
+          }
+          await stream.writeSSE({
+            event: evt.event,
+            data: JSON.stringify(evt.data),
+            ...(evt.id ? { id: evt.id } : {}),
           });
         }
+        if (sid) deps.registry.finishTurn(sid, "idle");
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          if (sid) deps.registry.finishTurn(sid, "aborted");
+          await stream.writeSSE({
+            event: "aborted",
+            data: JSON.stringify({ sessionId: sid ?? null }),
+          });
+          return;
+        }
+        const correlationId = randomUUID();
+        console.error(`[sessions] error correlationId=${correlationId}:`, err);
+        if (sid) deps.registry.finishTurn(sid, "error");
         await stream.writeSSE({
-          event: evt.event,
-          data: JSON.stringify(evt.data),
-          ...(evt.id ? { id: evt.id } : {}),
+          event: "error",
+          data: JSON.stringify({ message: "internal error", correlationId }),
         });
       }
-      if (sid) deps.registry.finishTurn(sid, "idle");
-    } catch (err) {
-      if (abortController.signal.aborted) {
-        if (sid) deps.registry.finishTurn(sid, "aborted");
-        await stream.writeSSE({
-          event: "aborted",
-          data: JSON.stringify({ sessionId: sid ?? null }),
-        });
-        return;
-      }
-      const correlationId = randomUUID();
-      console.error(`[sessions] error correlationId=${correlationId}:`, err);
-      if (sid) deps.registry.finishTurn(sid, "error");
-      await stream.writeSSE({
-        event: "error",
-        data: JSON.stringify({ message: "internal error", correlationId }),
-      });
+    } finally {
+      stopHeartbeat();
     }
   });
 }

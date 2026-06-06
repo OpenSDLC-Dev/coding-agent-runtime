@@ -133,6 +133,54 @@ describe("runTurn", () => {
     }
     expect(captured?.pathToClaudeCodeExecutable).toBeUndefined();
   });
+
+  it("registers a PreToolUse Bash allowlist hook in query options", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, capturing)) {
+      // drain
+    }
+    const matchers = captured?.hooks?.PreToolUse;
+    expect(matchers).toHaveLength(1);
+    expect(matchers?.[0]?.matcher).toBe("Bash");
+    expect(matchers?.[0]?.hooks).toHaveLength(1);
+  });
+
+  it("the registered hook denies a command outside the configured allowlist", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn(
+      { prompt: "hi" },
+      { ...testConfig, bashAllowlist: ["git"] },
+      capturing,
+    )) {
+      // drain
+    }
+    const hook = captured?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+    const out = await hook?.(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "npm install" },
+        tool_use_id: "t",
+        session_id: "s",
+        transcript_path: "/t",
+        cwd: "/workspace",
+      } as never,
+      "t",
+      { signal: new AbortController().signal },
+    );
+    expect(
+      (out as { hookSpecificOutput?: { permissionDecision?: string } })?.hookSpecificOutput
+        ?.permissionDecision,
+    ).toBe("deny");
+  });
 });
 
 describe("runTurn telemetry", () => {

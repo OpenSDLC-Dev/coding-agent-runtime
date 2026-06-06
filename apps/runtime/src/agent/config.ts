@@ -1,4 +1,5 @@
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
+import { DEFAULT_BASH_ALLOWLIST } from "../permissions/bash-allowlist.js";
 
 export interface RuntimeConfig {
   anthropicBaseUrl: string | undefined;
@@ -19,6 +20,11 @@ export interface RuntimeConfig {
   // （SDK 与 CLI 解耦：CLI 更新更频繁，可独立于 SDK 升级；二者经 stdio/stream-json 通信）。
   // 留空 → 回退 SDK 自带的平台二进制（本地 dev 用）。容器内由 Dockerfile 设为独立 CLI。
   claudeCliPath: string | undefined;
+  // P3 第 1 层 Bash 白名单：PreToolUse hook 仅放行 argv[0] basename 在此表内的命令。
+  // 经 RUNTIME_BASH_ALLOWLIST（逗号/空格分隔）覆盖；留空 → 内置 DEFAULT_BASH_ALLOWLIST。
+  bashAllowlist: string[];
+  // SSE 心跳间隔（毫秒）；0 = 禁用。经 RUNTIME_SSE_HEARTBEAT_MS 覆盖，默认 20000。
+  heartbeatMs: number;
 }
 
 const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -26,6 +32,23 @@ const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh",
 // 解析 RUNTIME_EFFORT；缺省或非法值 → "max"（runtime 默认拉满推理强度）。
 function parseEffort(raw: string | undefined): EffortLevel {
   return raw && (EFFORT_LEVELS as readonly string[]).includes(raw) ? (raw as EffortLevel) : "max";
+}
+
+// 解析 RUNTIME_BASH_ALLOWLIST（逗号/空格分隔）；缺省或空 → 内置默认白名单。
+function parseBashAllowlist(raw: string | undefined): string[] {
+  if (!raw) return [...DEFAULT_BASH_ALLOWLIST];
+  const items = raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : [...DEFAULT_BASH_ALLOWLIST];
+}
+
+// 解析 RUNTIME_SSE_HEARTBEAT_MS；缺省/非法/负数 → 20000（0 合法，表示禁用）。
+function parseHeartbeatMs(raw: string | undefined): number {
+  if (raw === undefined) return 20000;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 20000;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -54,6 +77,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     hostname: env.RUNTIME_HOSTNAME || "127.0.0.1",
     claudeCliPath: env.RUNTIME_CLAUDE_CLI_PATH || undefined,
     effort: parseEffort(env.RUNTIME_EFFORT),
+    bashAllowlist: parseBashAllowlist(env.RUNTIME_BASH_ALLOWLIST),
+    heartbeatMs: parseHeartbeatMs(env.RUNTIME_SSE_HEARTBEAT_MS),
   };
 }
 
