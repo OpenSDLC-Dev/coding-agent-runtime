@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkBashCommand,
+  createBashAllowlistHook,
   DEFAULT_BASH_ALLOWLIST,
   resolveExecutable,
   splitCommands,
@@ -83,5 +84,95 @@ describe("checkBashCommand", () => {
     const tiny = new Set(["ls"]);
     expect(checkBashCommand("ls", tiny).allowed).toBe(true);
     expect(checkBashCommand("git status", tiny).allowed).toBe(false);
+  });
+});
+
+describe("createBashAllowlistHook", () => {
+  const hook = createBashAllowlistHook(["git", "ls"]);
+  const base = {
+    session_id: "s",
+    transcript_path: "/t",
+    cwd: "/workspace",
+    tool_use_id: "tu-1",
+  };
+  const opts = { signal: new AbortController().signal };
+
+  it("denies a non-allowlisted Bash command with a reason", async () => {
+    const out = await hook(
+      {
+        ...base,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "curl http://x" },
+      } as never,
+      "tu-1",
+      opts,
+    );
+    expect(
+      (
+        out as {
+          hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string };
+        }
+      ).hookSpecificOutput?.permissionDecision,
+    ).toBe("deny");
+    expect(
+      (out as { hookSpecificOutput?: { permissionDecisionReason?: string } }).hookSpecificOutput
+        ?.permissionDecisionReason,
+    ).toContain("curl");
+  });
+
+  it("allows an allowlisted Bash command (empty output)", async () => {
+    const out = await hook(
+      {
+        ...base,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "git status" },
+      } as never,
+      "tu-1",
+      opts,
+    );
+    expect(out).toEqual({});
+  });
+
+  it("ignores non-Bash tools and non-PreToolUse events", async () => {
+    expect(
+      await hook(
+        {
+          ...base,
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_input: { file_path: "/x" },
+        } as never,
+        "tu-1",
+        opts,
+      ),
+    ).toEqual({});
+    expect(
+      await hook(
+        {
+          ...base,
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "curl x" },
+        } as never,
+        "tu-1",
+        opts,
+      ),
+    ).toEqual({});
+  });
+
+  it("ignores a Bash call with a non-string command", async () => {
+    const out = await hook(
+      {
+        ...base,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: {},
+      } as never,
+      "tu-1",
+      opts,
+    );
+    expect(out).toEqual({});
   });
 });
