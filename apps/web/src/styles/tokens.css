@@ -1,0 +1,378 @@
+/* =============================================================
+   TWILIO PASTE — Foundations (colors, type, spacing, elevation)
+   Extracted from twilio-labs/paste @ packages/paste-design-tokens
+   Light theme ("default"). Values are verbatim from the source tokens.
+
+   Note: Inter + Roboto Mono are loaded from Google Fonts in index.html
+   (the design self-hosted Inter; here we use the CDN copy — visually identical,
+   and Inter is Paste's own documented fallback for Twilio Sans).
+   ============================================================= */
+
+:root {
+  /* ----------------------------------------------------------
+     RAW PALETTE  (tokens/aliases/color-palette.yml + color.yml)
+     ---------------------------------------------------------- */
+
+  /* Brand accents */
+  --palette-amaranth: #f22f46; /* Twilio brand red */
+  --palette-amaranth-accent: #f3465a;
+  --palette-saffron: #f2be5a; /* Twilio (brand-10) */
+  --palette-sky: #51a9e3; /* SendGrid (brand-20) */
+  --palette-mint: #6addb2; /* Segment (brand-30) */
+  --palette-sun: #ff7a00;
+  --palette-ink-accent: #17243b;
+  --palette-paper-accent: #fef0e6;
+
+  /* Blues (primary / interactive) */
+  --palette-blue-05: #f4f9ff;
+  --palette-blue-10: #ebf4ff;
+  --palette-blue-20: #cce4ff;
+  --palette-blue-30: #99cdff;
+  --palette-blue-40: #66b3ff;
+  --palette-blue-50: #008cff;
+  --palette-blue-55: #006dfa;
+  --palette-blue-60: #0263e0; /* primary action */
+  --palette-blue-70: #043cb5;
+  --palette-blue-80: #001489;
+  --palette-blue-90: #030b5d;
+  --palette-blue-100: #06033a;
+
+  /* Grays (neutral) */
+  --palette-gray-0: #ffffff;
+  --palette-gray-05: #f9f9fa;
+  --palette-gray-10: #f4f4f6;
+  --palette-gray-15: #edeef2;
+  --palette-gray-20: #e1e3ea;
+  --palette-gray-30: #cacdd8;
+  --palette-gray-40: #8b93aa;
+  --palette-gray-50: #8891aa;
+  --palette-gray-55: #67728e;
+  --palette-gray-60: #606b85;
+  --palette-gray-70: #4b5671;
+  --palette-gray-75: #404f6e;
+  --palette-gray-80: #394762;
+  --palette-gray-85: #25395b;
+  --palette-gray-90: #1f304c;
+  --palette-gray-95: #18253c;
+  --palette-gray-100: #121c2d; /* body text */
+  --palette-gray-110: #0f1621;
+
+  /* Greens (success) */
+  --palette-green-10: #edfdf3;
+  --palette-green-20: #d1fae0;
+  --palette-green-60: #14b053;
+  --palette-green-70: #0e7c3a;
+  --palette-green-90: #0d3a1f;
+
+  /* Oranges (warning) */
+  --palette-orange-10: #fef5ee;
+  --palette-orange-20: #fddcc4;
+  --palette-orange-60: #f47c22;
+  --palette-orange-70: #c35323;
+
+  /* Reds (error / destructive) */
+  --palette-red-05: #fef5f5;
+  --palette-red-10: #feecec;
+  --palette-red-20: #fccfcf;
+  --palette-red-50: #ec5b5b;
+  --palette-red-60: #db132a;
+  --palette-red-70: #ad1111;
+  --palette-red-90: #4a0b0b;
+
+  /* Yellows (subaccount / highlight) */
+  --palette-yellow-10: #fffbea;
+  --palette-yellow-20: #fff1b3;
+  --palette-yellow-60: #e8b407;
+
+  /* Purples (user / new / AI) */
+  --palette-purple-10: #f5f0fc;
+  --palette-purple-20: #e7dcfa;
+  --palette-purple-30: #c8aff0;
+  --palette-purple-50: #8c5bd8;
+  --palette-purple-60: #6d2ed1;
+  --palette-purple-70: #5817bd;
+
+  /* ----------------------------------------------------------
+     SEMANTIC COLOR — Background  (tokens/global/background-color.yml)
+     ---------------------------------------------------------- */
+  --color-background-body: var(--palette-gray-0); /* page body (white) */
+  --color-background-body-inverse: var(--palette-gray-100);
+  --color-background: var(--palette-gray-10); /* default container */
+  --color-background-strong: var(--palette-gray-20);
+  --color-background-stronger: var(--palette-gray-50);
+  --color-background-weak: var(--palette-gray-05);
+  --color-background-weakest: var(--palette-gray-0);
+  --color-background-inverse: var(--palette-gray-90);
+
+  /* Brand */
+  --color-background-brand: var(--palette-blue-80);
+  --color-background-brand-stronger: var(--palette-blue-100);
+  --color-background-brand-highlight: var(--palette-amaranth);
+  --color-background-brand-10: var(--palette-saffron); /* Twilio */
+  --color-background-brand-20: var(--palette-sky); /* SendGrid */
+  --color-background-brand-30: var(--palette-mint); /* Segment */
+
+  /* Primary (interactive) */
+  --color-background-primary: var(--palette-blue-60);
+  --color-background-primary-strong: var(--palette-blue-80);
+  --color-background-primary-weak: var(--palette-blue-30);
+  --color-background-primary-weakest: var(--palette-blue-10);
+
+  /* Destructive */
+  --color-background-destructive: var(--palette-red-60);
+  --color-background-destructive-strong: var(--palette-red-80);
+  --color-background-destructive-weakest: var(--palette-red-05);
+
+  /* Status */
+  --color-background-success: var(--palette-green-60);
+  --color-background-success-weakest: var(--palette-green-10);
+  --color-background-warning: var(--palette-orange-60);
+  --color-background-warning-weakest: var(--palette-orange-10);
+  --color-background-error: var(--palette-red-60);
+  --color-background-error-weakest: var(--palette-red-05);
+  --color-background-neutral-weakest: var(--palette-blue-10);
+  --color-background-new-weakest: var(--palette-purple-10);
+
+  /* Account context */
+  --color-background-user: var(--palette-purple-30);
+  --color-background-subaccount: var(--palette-yellow-10);
+  --color-background-trial: var(--palette-green-20);
+
+  /* ----------------------------------------------------------
+     SEMANTIC COLOR — Text  (tokens/global/text-color.yml)
+     ---------------------------------------------------------- */
+  --color-text: var(--palette-gray-100); /* body text */
+  --color-text-weak: var(--palette-gray-60); /* secondary / hierarchy */
+  --color-text-weaker: var(--palette-gray-40); /* placeholder / disabled */
+  --color-text-weakest: var(--palette-gray-0);
+  --color-text-inverse: var(--palette-gray-0);
+  --color-text-icon: var(--palette-gray-60);
+  --color-text-brand-highlight: var(--palette-amaranth);
+  --color-text-link: var(--palette-blue-60);
+  --color-text-link-strong: var(--palette-blue-80);
+  --color-text-primary: var(--palette-blue-60);
+  --color-text-primary-strong: var(--palette-blue-80);
+  --color-text-error: var(--palette-red-60);
+  --color-text-success: var(--palette-green-70);
+  --color-text-warning: var(--palette-orange-70);
+
+  /* ----------------------------------------------------------
+     SEMANTIC COLOR — Border  (tokens/global/border-color.yml)
+     ---------------------------------------------------------- */
+  --color-border: var(--palette-gray-40);
+  --color-border-strong: var(--palette-gray-60);
+  --color-border-weak: var(--palette-gray-30);
+  --color-border-weaker: var(--palette-gray-20);
+  --color-border-primary: var(--palette-blue-60);
+  --color-border-error: var(--palette-red-60);
+
+  /* ----------------------------------------------------------
+     TYPOGRAPHY — Families  (tokens/aliases/font-family.yml)
+     ---------------------------------------------------------- */
+  --font-family-text:
+    "Inter", "Inter var", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans,
+    Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --font-family-mono:
+    "Twilio Sans Mono", "TwilioSansMono", "Roboto Mono", ui-monospace, Courier, monospace;
+
+  /* Font sizes (rem; px in comment) */
+  --font-size-10: 0.625rem; /* 10 */
+  --font-size-20: 0.75rem; /* 12 */
+  --font-size-30: 0.875rem; /* 14  ← UI default */
+  --font-size-40: 1rem; /* 16 */
+  --font-size-50: 1.125rem; /* 18 */
+  --font-size-60: 1.25rem; /* 20 */
+  --font-size-70: 1.5rem; /* 24 */
+  --font-size-80: 1.75rem; /* 28 */
+  --font-size-90: 2rem; /* 32 */
+  --font-size-100: 2.5rem; /* 40 */
+  --font-size-110: 3rem; /* 48 */
+  --font-size-display-10: 2rem; /* 32 */
+  --font-size-display-20: 3rem; /* 48 */
+  --font-size-display-30: 4rem; /* 64 */
+
+  /* Line heights */
+  --line-height-20: 1.25rem; /* 20 */
+  --line-height-30: 1.25rem; /* 20 */
+  --line-height-40: 1.5rem; /* 24 */
+  --line-height-50: 1.75rem; /* 28 */
+  --line-height-60: 1.75rem; /* 28 */
+  --line-height-70: 2rem; /* 32 */
+  --line-height-80: 2.5rem; /* 40 */
+  --line-height-90: 2.5rem; /* 40 */
+  --line-height-100: 3.25rem; /* 52 */
+  --line-height-110: 4rem; /* 64 */
+  --line-height-display-10: 2.5rem;
+  --line-height-display-20: 3.75rem;
+  --line-height-display-30: 5rem;
+
+  /* Font weights */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  /* ----------------------------------------------------------
+     SPACING  (tokens/aliases/spacing.yml) — 4px base, rem scale
+     ---------------------------------------------------------- */
+  --space-0: 0;
+  --space-10: 0.125rem; /* 2 */
+  --space-20: 0.25rem; /* 4 */
+  --space-30: 0.5rem; /* 8 */
+  --space-40: 0.75rem; /* 12 */
+  --space-50: 1rem; /* 16 */
+  --space-60: 1.25rem; /* 20 */
+  --space-70: 1.5rem; /* 24 */
+  --space-80: 1.75rem; /* 28 */
+  --space-90: 2rem; /* 32 */
+  --space-100: 2.25rem; /* 36 */
+  --space-110: 2.5rem; /* 40 */
+  --space-120: 2.75rem; /* 44 */
+  --space-130: 3rem; /* 48 */
+  --space-140: 3.25rem; /* 52 */
+  --space-150: 3.5rem; /* 56 */
+  --space-160: 3.75rem; /* 60 */
+  --space-170: 4rem; /* 64 */
+  --space-200: 4.75rem; /* 76 */
+
+  /* ----------------------------------------------------------
+     BORDER RADIUS  (tokens/aliases/border-radius.yml)
+     ---------------------------------------------------------- */
+  --border-radius-10: 2px;
+  --border-radius-20: 4px; /* inputs */
+  --border-radius-30: 8px; /* buttons, cards */
+  --border-radius-40: 12px;
+  --border-radius-50: 16px;
+  --border-radius-60: 20px;
+  --border-radius-70: 24px;
+  --border-radius-circle: 50%;
+  --border-radius-pill: 100px;
+
+  /* Border widths */
+  --border-width-10: 1px;
+  --border-width-20: 2px;
+
+  /* ----------------------------------------------------------
+     ELEVATION / SHADOWS  (tokens/global/box-shadow.yml — resolved)
+     Paste uses box-shadow "rings" as borders (1px spread, no real border).
+     ---------------------------------------------------------- */
+  /* Risen elevation */
+  --shadow-low: 0 2px 8px 0 rgba(18, 28, 45, 0.1);
+  --shadow: 0 4px 16px 0 rgba(18, 28, 45, 0.2);
+  --shadow-high: 0 16px 24px 0 rgba(18, 28, 45, 0.2);
+  --shadow-card: 0 2px 8px 0 rgba(18, 28, 45, 0.1);
+
+  /* Subtle accent elevation (for menus / popovers) */
+  --shadow-elevation-05: 0 0 0 1px var(--palette-gray-15);
+  --shadow-elevation-10: 0 -1px 0 0 var(--palette-gray-10), 0 3px 4px 0 rgba(15, 22, 33, 0.1);
+  --shadow-elevation-20: 0 6px 8px 0 rgba(15, 22, 33, 0.1), 16px 16px 32px 0 rgba(15, 22, 33, 0.05);
+
+  /* Shadow-borders (used in place of CSS borders on controls) */
+  --shadow-border: 0 0 0 1px var(--palette-gray-40);
+  --shadow-border-weak: 0 0 0 1px var(--palette-gray-30);
+  --shadow-border-weaker: 0 0 0 1px var(--palette-gray-20);
+  --shadow-border-strong: 0 0 0 1px var(--palette-gray-60);
+  --shadow-border-primary: 0 0 0 1px var(--palette-blue-60);
+  --shadow-border-error: 0 0 0 1px var(--palette-red-60);
+  --shadow-border-bottom: 0 1px 0 0 var(--palette-gray-40);
+
+  /* Focus rings */
+  --shadow-focus: 0 0 0 4px rgba(2, 99, 224, 0.7);
+  --shadow-focus-inverse: 0 0 0 4px rgba(255, 255, 255, 0.4);
+  --shadow-focus-shadow-border: 0 0 0 4px rgba(2, 99, 224, 0.7), 0 0 0 1px var(--palette-gray-50);
+
+  /* Motion (from Button: 100ms ease-in transitions) */
+  --transition-control:
+    background-color 100ms ease-in, box-shadow 100ms ease-in, color 100ms ease-in;
+}
+
+/* =============================================================
+   SEMANTIC TYPE PRESETS
+   Mirrors Paste's Heading / Text / Paragraph components.
+   ============================================================= */
+
+body {
+  font-family: var(--font-family-text);
+  color: var(--color-text);
+  background-color: var(--color-background-body);
+  font-size: var(--font-size-30);
+  line-height: var(--line-height-40);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings — Paste Heading variants */
+.heading-10 {
+  font-size: var(--font-size-110);
+  line-height: var(--line-height-110);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  margin: 0;
+}
+.heading-20 {
+  font-size: var(--font-size-90);
+  line-height: var(--line-height-80);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  margin: 0;
+}
+.heading-30 {
+  font-size: var(--font-size-70);
+  line-height: var(--line-height-70);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  margin: 0;
+}
+.heading-40 {
+  font-size: var(--font-size-50);
+  line-height: var(--line-height-50);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+.heading-50 {
+  font-size: var(--font-size-40);
+  line-height: var(--line-height-40);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+.heading-60 {
+  font-size: var(--font-size-30);
+  line-height: var(--line-height-30);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* Body */
+.text-body {
+  font-size: var(--font-size-30);
+  line-height: var(--line-height-40);
+  color: var(--color-text);
+}
+.text-body-large {
+  font-size: var(--font-size-40);
+  line-height: var(--line-height-50);
+  color: var(--color-text);
+}
+.text-detail {
+  font-size: var(--font-size-20);
+  line-height: var(--line-height-20);
+  color: var(--color-text-weak);
+}
+.text-weak {
+  color: var(--color-text-weak);
+}
+
+a {
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
