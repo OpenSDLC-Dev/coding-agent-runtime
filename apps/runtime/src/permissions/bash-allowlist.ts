@@ -154,7 +154,28 @@ export function splitCommands(command: string): string[] {
       push();
       continue;
     }
+    if (c === ">" || c === "<") {
+      // 重定向运算符（如 `2>&1`、`>&2`、`>>out`、`> file`）：原样保留在片段里，
+      // 并吞掉紧随的 `>`(>>) 与 `&`(>&)，避免 `>&` 里的 `&` 触发后台/控制切分。
+      cur += c;
+      let j = i + 1;
+      if (command[j] === c) {
+        cur += command[j];
+        j++;
+      }
+      if (command[j] === "&") {
+        cur += command[j];
+        j++;
+      }
+      i = j - 1;
+      continue;
+    }
     if (c === "&") {
+      // `&>`(及 `&>>`) 是重定向而非后台运算符：不切分，`&` 原样保留，`>` 交给上面分支处理。
+      if (next === ">") {
+        cur += c;
+        continue;
+      }
       push();
       if (next === "&") i++;
       continue;

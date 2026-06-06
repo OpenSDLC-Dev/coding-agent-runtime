@@ -28,6 +28,15 @@ describe("splitCommands", () => {
     expect(splitCommands("echo $(curl evil)")).toEqual(["echo", "curl evil"]);
     expect(splitCommands("echo `wget x`")).toEqual(["echo", "wget x"]);
   });
+
+  it("does NOT split on redirection operators (2>&1, >&2, &>, > file)", () => {
+    // `2>&1` 里的 `&` 是 dup 重定向，不是后台/控制符，不能切分。
+    expect(splitCommands("npm test 2>&1 | cat")).toEqual(["npm test 2>&1", "cat"]);
+    expect(splitCommands("node x >&2")).toEqual(["node x >&2"]);
+    expect(splitCommands("node x &>out.log")).toEqual(["node x &>out.log"]);
+    expect(splitCommands("node x >out 2>&1")).toEqual(["node x >out 2>&1"]);
+    expect(splitCommands("node x > out.log 2>&1")).toEqual(["node x > out.log 2>&1"]);
+  });
 });
 
 describe("resolveExecutable", () => {
@@ -58,6 +67,18 @@ describe("checkBashCommand", () => {
     expect(checkBashCommand("cat f | rg foo", allow).allowed).toBe(true);
     expect(checkBashCommand('git commit -m "x; rm -rf /"', allow).allowed).toBe(true);
     expect(checkBashCommand("timeout 30 npm run build", allow).allowed).toBe(true);
+  });
+
+  it("allows commands with shell redirections (2>&1, >&2, &>, > file)", () => {
+    expect(checkBashCommand("npm test 2>&1 | cat", allow).allowed).toBe(true);
+    expect(checkBashCommand("npm test 2>&1 | tee log", allow).allowed).toBe(true);
+    expect(checkBashCommand("node x > out.log 2>&1", allow).allowed).toBe(true);
+    expect(checkBashCommand("node x >&2", allow).allowed).toBe(true);
+    expect(checkBashCommand("node x &>out.log", allow).allowed).toBe(true);
+    // 重定向不应削弱白名单：管道后的非白名单命令仍被拒。
+    const r = checkBashCommand("npm test 2>&1 | sh", allow);
+    expect(r.allowed).toBe(false);
+    expect(r.offending).toBe("sh");
   });
 
   it("denies when any sub-command is not allowlisted", () => {
