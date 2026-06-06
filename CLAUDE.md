@@ -60,6 +60,16 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. English for Published Artifacts
+
+**Anything published to the public GitHub repository must be written in English.**
+
+- `README.md` and every other Markdown doc tracked in the repo.
+- Commit messages.
+- The GitHub repo "About"/description.
+
+In-session conversation may continue in the contributor's preferred language; this rule governs only what is published to the repository.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
