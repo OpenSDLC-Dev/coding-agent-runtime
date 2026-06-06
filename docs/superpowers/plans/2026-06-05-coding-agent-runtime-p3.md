@@ -42,7 +42,7 @@ deny 返回 `{ hookSpecificOutput: { hookEventName:'PreToolUse', permissionDecis
 - 单文件测试：`… --filter @app/runtime test <file>`（vitest 接受路径过滤）
 - 类型：`COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm@10.34.1 --filter @app/runtime typecheck`
 - Biome：`COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm@10.34.1 check`（= `biome check --write .`）
-- 工作目录始终是仓库根 `C:\Users\HE LE\Project\opensdlc\coding-agent-runtime`。
+- 工作目录始终是仓库根 `<repo-root>`。
 
 ---
 

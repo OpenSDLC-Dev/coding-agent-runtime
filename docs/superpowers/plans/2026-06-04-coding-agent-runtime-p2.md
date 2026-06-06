@@ -16,7 +16,7 @@
 **Tech Stack:** TypeScript（runtime: NodeNext，import 带 `.js`）、@opentelemetry/* JS SDK（手动 span）、Hono SSE、Docker Compose（otel-collector-contrib / jaeger all-in-one / prometheus）、Vite+React（web：Bundler 解析，import 不带扩展名）、vitest、Biome。
 
 **前置事实（实现者须知）：**
-- 工作目录 `C:\Users\HE LE\Project\opensdlc\coding-agent-runtime`，pnpm workspace 双包 `apps/runtime`（`@app/runtime`）+ `apps/web`（`@app/web`）。
+- 工作目录 `<repo-root>`，pnpm workspace 双包 `apps/runtime`（`@app/runtime`）+ `apps/web`（`@app/web`）。
 - pnpm 只能这样调：`COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm@10.34.1 <args>`。安装依赖用 `--filter @app/runtime`；本机有 HTTP 代理（`HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:1235`）。
 - runtime 测试入口 `apps/runtime/test/*.test.ts`，跑：`corepack pnpm@10.34.1 --filter @app/runtime test`；typecheck：`... --filter @app/runtime typecheck`。
 - biome 检查改动文件：`corepack pnpm@10.34.1 exec biome check <files>`（提交前必须 exit 0）。
