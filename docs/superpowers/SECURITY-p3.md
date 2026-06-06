@@ -1,41 +1,31 @@
-# P3 安全模型与运维说明
+# P3 Security Model & Operations
 
-## 威胁模型
-- 容器是真正隔离边界；CLI 以 `permissionMode:'bypassPermissions'` 无人值守运行。
-- 防的是"过宽/意外的命令与出网"，**不**假设 agent 本身恶意。部署前提 = 可信网络。
-- 密钥（`ANTHROPIC_API_KEY`/`GH_TOKEN`）仅经 `.env`/env，不进镜像/日志/OTel trace。
+## Threat model
+- The container is the real isolation boundary; the CLI runs unattended with `permissionMode:'bypassPermissions'`.
+- The goal is to prevent **overly-broad / accidental commands and egress**, not to assume the agent itself is malicious. Deployment assumption = trusted network.
+- Secrets (`ANTHROPIC_API_KEY` / `GH_TOKEN`) flow only through `.env`/env — never into the image, logs, or OTel traces.
 
-## 两层 Bash 强制
-1. **PreToolUse hook**（`permissions/bash-allowlist.ts`）：解析 `tool_input.command`，按
-   `&& || ; | & 换行` 与命令替换 `$()`/反引号边界拆分、剥 `timeout/nice/nohup/env/...` 包装器与
-   `VAR=val` 前缀，逐子命令查 argv[0] basename 是否在白名单。任一不在即 `permissionDecision:'deny'`
-   （绕过 canUseTool、连 bypassPermissions 都拦、覆盖子 agent）。白名单可经 `RUNTIME_BASH_ALLOWLIST` 覆盖。
-2. **`disallowedTools` 兜底**：`Bash(curl:*)`/`Bash(wget:*)`/`Bash(sudo:*)`/`Bash(rm -rf:*)`（deny 永远赢）。
+## Two-layer Bash enforcement
+1. **PreToolUse hook** (`permissions/bash-allowlist.ts`): parses `tool_input.command`, splitting on `&& || ; | &` and newlines plus command-substitution `$()` / backtick boundaries, stripping `timeout/nice/nohup/env/...` wrappers and `VAR=val` prefixes, then checking each sub-command's `argv[0]` basename against the allowlist. Any miss → `permissionDecision:'deny'` (bypasses canUseTool, blocks even under bypassPermissions, applies to sub-agents). The allowlist can be overridden via `RUNTIME_BASH_ALLOWLIST`.
+2. **`disallowedTools` backstop**: `Bash(curl:*)` / `Bash(wget:*)` / `Bash(sudo:*)` / `Bash(rm -rf:*)` (deny always wins).
 
-### 已知残留（可信网络下可接受）
-- **exec-passthrough**：`find -exec <cmd>`、`npx <pkg>`、`xargs` 之类会执行白名单看不到的子命令。
-  缓解：`xargs`/`sh`/`bash`/`eval` 不在默认白名单；curl/wget 二进制已从镜像移除 + disallowedTools 兜底。
-- **brace group** `{ …; }`、复杂混淆：解析偏保守（宁可误拒），但非形式化沙箱。
+### Known residuals (acceptable on a trusted network)
+- **exec-passthrough**: `find -exec <cmd>`, `npx <pkg>`, `xargs` and the like run sub-commands the allowlist cannot see. Mitigations: `xargs`/`sh`/`bash`/`eval` are not in the default allowlist; the curl/wget binaries are removed from the image, plus the disallowedTools backstop.
+- **brace group** `{ …; }` and complex obfuscation: the parser errs conservative (prefers false-deny), but it is not a formal sandbox.
 
-## Egress（出网）
-- 默认：tool 层为主——只放行 `git/gh/npm/uv` 等"有意出网口"，curl/wget 被禁且二进制已移除。
-- 可选强化：`container/egress-allowlist.sh`（opt-in，需 `cap_add:[NET_ADMIN]`）默认 DROP 出站、按
-  `EGRESS_ALLOW_DOMAINS` 域名快照 IP 放行。**局限**：CDN（githubusercontent 等）多 IP 且轮换，
-  快照可能过期；启用前先在目标环境验证。
+## Egress
+- Default: tool-layer-primary — only "intentional egress" commands such as `git/gh/npm/uv` are allowed; curl/wget are blocked and their binaries removed.
+- Optional hardening: `container/egress-allowlist.sh` (opt-in, requires `cap_add:[NET_ADMIN]`) defaults OUTPUT to DROP and allows snapshotted IPs for `EGRESS_ALLOW_DOMAINS`. **Limitation**: CDNs (githubusercontent, etc.) use many rotating IPs, so the snapshot can go stale; validate in your target environment before enabling.
 
-### 启用 egress 脚本
-1. compose runtime 服务：`cap_add: [NET_ADMIN]`（并保留其余 cap_drop）。
-2. 在 entrypoint `exec node` 之前插一行 `bash /app/apps/runtime/container/egress-allowlist.sh || true`，
-   或以独立 init 容器运行。
-3. 设 `EGRESS_ALLOW_DOMAINS`（可选；默认含 GitHub/npm/pypi + 自动并入 ANTHROPIC_BASE_URL host）。
+### Enabling the egress script
+1. compose runtime service: add `cap_add: [NET_ADMIN]` (keep the rest of `cap_drop`).
+2. Insert `bash /app/apps/runtime/container/egress-allowlist.sh || true` before `exec node` in the entrypoint, or run it as a separate init container.
+3. Set `EGRESS_ALLOW_DOMAINS` (optional; defaults include GitHub/npm/pypi + the `ANTHROPIC_BASE_URL` host automatically).
 
-## 容器硬化（compose 标准集）
-`read_only` rootfs + `tmpfs /tmp` + `cap_drop:[ALL]` + `security_opt:[no-new-privileges]` +
-`pids_limit` + `mem/cpu` 限额；非 root（uid 10001）。缓存/配置经 ENV 重定向到 `/tmp`
-（`NPM_CONFIG_CACHE`/`UV_CACHE_DIR`/`XDG_*`/`GH_CONFIG_DIR`/`GIT_CONFIG_GLOBAL`/`PNPM_HOME`）。
+## Container hardening (compose standard set)
+`read_only` rootfs + `tmpfs /tmp` + `cap_drop:[ALL]` + `security_opt:[no-new-privileges]` + `pids_limit` + `mem/cpu` limits; non-root (uid 10001). Caches/config are redirected to `/tmp` via ENV (`NPM_CONFIG_CACHE` / `UV_CACHE_DIR` / `XDG_*` / `GH_CONFIG_DIR` / `GIT_CONFIG_GLOBAL` / `PNPM_HOME`).
 
-## 韧性
-- SSE `:keepalive` 心跳（`RUNTIME_SSE_HEARTBEAT_MS`，默认 20000，0=禁用）防反代 idle 断连；事件带 `id:`。
-- 中止：`POST /sessions/:id/stop` → AbortController.abort() → 本轮发 `aborted` 事件。
-- 断线重连：无状态每轮模型不做 mid-turn 续追；客户端重连后用 `GET /sessions/:id/transcript`
-  取已完成内容，或开新一轮（resume 续上下文）。
+## Resilience
+- SSE `:keepalive` heartbeat (`RUNTIME_SSE_HEARTBEAT_MS`, default 20000, 0 = disabled) to survive idle proxy disconnects; events carry `id:`.
+- Abort: `POST /sessions/:id/stop` → `AbortController.abort()` → the turn emits an `aborted` event.
+- Reconnect: the stateless per-turn model does no mid-turn resumption; after reconnecting, the client fetches completed content via `GET /sessions/:id/transcript`, or starts a new turn (resume preserves context).
