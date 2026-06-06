@@ -3,6 +3,7 @@ import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
 import { isSpanContextValid, type Span, SpanStatusCode } from "@opentelemetry/api";
 import { startToolSpan, startTurnSpan, traceparentOf } from "../otel/spans.js";
 import { setUsageAttributes } from "../otel/usage.js";
+import { createBashAllowlistHook } from "../permissions/bash-allowlist.js";
 import type { RuntimeConfig } from "./config.js";
 
 export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error" | "aborted";
@@ -121,6 +122,11 @@ export async function* runTurn(
     // P0 安全兜底：deny 永远赢，挡住联网/提权/危险删除。这是不依赖文件设置的硬兜底；
     // 完整的 PreToolUse Bash 白名单（解析 && | ; 拆分、剥包装器）仍排在 P3（spec §6）。
     disallowedTools: ["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(rm -rf:*)"],
+    // P3 第 1 层：解析式 Bash 白名单（PreToolUse deny 绕过 canUseTool、连 bypass 都拦、覆盖子 agent）。
+    // 与上面的 disallowedTools 兜底叠加：deny 永远赢。
+    hooks: {
+      PreToolUse: [{ matcher: "Bash", hooks: [createBashAllowlistHook(cfg.bashAllowlist)] }],
+    },
     systemPrompt: { type: "preset", preset: "claude_code" },
     settingSources: ["user", "project"],
     includePartialMessages: cfg.includePartial,
