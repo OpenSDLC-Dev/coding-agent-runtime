@@ -27,6 +27,16 @@ services:
     volumes:
       - ./.runtime/workspace:/workspace
       - ./.runtime/claude-config:/claude-config
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
     depends_on:
       - otel-collector
 
