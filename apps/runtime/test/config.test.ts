@@ -36,6 +36,11 @@ describe("loadConfig", () => {
       effort: "high",
       bashAllowlist: [...DEFAULT_BASH_ALLOWLIST],
       heartbeatMs: 20000,
+      maxTurns: 100,
+      turnTimeoutMs: 0,
+      maxConcurrentTurns: 2,
+      sessionTtlMs: 0,
+      gcIntervalMs: 3_600_000,
     });
   });
 
@@ -53,6 +58,41 @@ describe("loadConfig", () => {
     expect(cfg.effort).toBe("max");
     expect(cfg.bashAllowlist).toEqual([...DEFAULT_BASH_ALLOWLIST]);
     expect(cfg.heartbeatMs).toBe(20000);
+    expect(cfg.maxTurns).toBe(100);
+    expect(cfg.turnTimeoutMs).toBe(0);
+    expect(cfg.maxConcurrentTurns).toBe(2);
+    expect(cfg.sessionTtlMs).toBe(0);
+    expect(cfg.gcIntervalMs).toBe(3_600_000);
+  });
+
+  it("parses production-guard env vars (maxTurns, timeout, concurrency, GC)", () => {
+    const cfg = loadConfig({
+      ANTHROPIC_API_KEY: "sk-test",
+      RUNTIME_MAX_TURNS: "30",
+      RUNTIME_TURN_TIMEOUT_MS: "60000",
+      RUNTIME_MAX_CONCURRENT_TURNS: "4",
+      RUNTIME_SESSION_TTL_MS: "86400000",
+      RUNTIME_GC_INTERVAL_MS: "600000",
+    });
+    expect(cfg.maxTurns).toBe(30);
+    expect(cfg.turnTimeoutMs).toBe(60000);
+    expect(cfg.maxConcurrentTurns).toBe(4);
+    expect(cfg.sessionTtlMs).toBe(86400000);
+    expect(cfg.gcIntervalMs).toBe(600000);
+  });
+
+  it("allows 0 for maxTurns/concurrency (unlimited) but ignores invalid/non-positive gcInterval", () => {
+    const cfg = loadConfig({
+      ANTHROPIC_API_KEY: "sk-test",
+      RUNTIME_MAX_TURNS: "0",
+      RUNTIME_MAX_CONCURRENT_TURNS: "0",
+      RUNTIME_GC_INTERVAL_MS: "0", // non-positive → fall back to default
+      RUNTIME_TURN_TIMEOUT_MS: "-5", // invalid → fall back to default 0
+    });
+    expect(cfg.maxTurns).toBe(0);
+    expect(cfg.maxConcurrentTurns).toBe(0);
+    expect(cfg.gcIntervalMs).toBe(3_600_000);
+    expect(cfg.turnTimeoutMs).toBe(0);
   });
 
   it("falls back to max effort for an invalid RUNTIME_EFFORT value", () => {

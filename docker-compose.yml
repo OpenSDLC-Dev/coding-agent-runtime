@@ -7,6 +7,9 @@ services:
     env_file: .env
     environment:
       RUNTIME_HOSTNAME: 0.0.0.0
+      # —— Production guards: keep concurrency in step with mem_limit (≈1 GiB/session vs 2g below) ——
+      RUNTIME_MAX_CONCURRENT_TURNS: "2"
+      RUNTIME_MAX_TURNS: "100"
       # —— runtime's own NodeSDK (traces only) ——
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf

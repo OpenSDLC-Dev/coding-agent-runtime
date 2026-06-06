@@ -134,6 +134,59 @@ describe("runTurn", () => {
     expect(captured?.pathToClaudeCodeExecutable).toBeUndefined();
   });
 
+  it("passes maxTurns through to query options when configured (>0)", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, { ...testConfig, maxTurns: 42 }, capturing)) {
+      // drain
+    }
+    expect(captured?.maxTurns).toBe(42);
+  });
+
+  it("omits maxTurns when set to 0 (unlimited)", async () => {
+    let captured: Options | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.options;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt: "hi" }, { ...testConfig, maxTurns: 0 }, capturing)) {
+      // drain
+    }
+    expect(captured?.maxTurns).toBeUndefined();
+  });
+
+  it("aborts the turn when the wall-clock timeout elapses", async () => {
+    // hang after init until the turn's abortController fires (the timeout should fire it).
+    const hang: QueryFn = (args) => {
+      const signal = args.options.abortController?.signal;
+      return (async function* () {
+        yield sampleMessages[0] as never; // init (sess-1)
+        await new Promise<void>((_, reject) => {
+          if (signal?.aborted) return reject(new Error("aborted"));
+          signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        });
+      })();
+    };
+    const ac = new AbortController();
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const e of runTurn(
+          { prompt: "hi", abortController: ac },
+          { ...testConfig, turnTimeoutMs: 5 },
+          hang,
+        )) {
+          seen.push(e.event);
+        }
+      })(),
+    ).rejects.toThrow();
+    expect(ac.signal.aborted).toBe(true);
+    expect(seen).toContain("init");
+  });
+
   it("registers a PreToolUse Bash allowlist hook in query options", async () => {
     let captured: Options | undefined;
     const capturing: QueryFn = (args) => {
