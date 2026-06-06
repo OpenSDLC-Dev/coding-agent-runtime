@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: apps/runtime/Dockerfile
-    image: coding-agent-runtime:p2
+    image: coding-agent-runtime:p3
     env_file: .env
     environment:
       RUNTIME_HOSTNAME: 0.0.0.0
