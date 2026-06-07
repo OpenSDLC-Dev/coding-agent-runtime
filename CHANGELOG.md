@@ -1,0 +1,131 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0/).
+
+> **Note on versions.** Releases 0.1.0–0.6.0 retroactively document the project's
+> development milestones (phases P0–P3, then public-release preparation and
+> production hardening). They were not cut as Git tags, and `package.json` stays at
+> `0.0.0` until the first tagged release; each date is when the milestone merged.
+
+## [Unreleased]
+
+## [0.6.0] - 2026-06-07 — Hosting production guards
+
+### Added
+
+- Add `RUNTIME_MAX_TURNS` runaway backstop (default 100) capping agentic round-trips per turn, since the Agent SDK has no top-level session timeout.
+- Add optional `RUNTIME_TURN_TIMEOUT_MS` per-turn wall-clock deadline that aborts a running turn (emitting an `aborted` event); disabled by default.
+- Add `RUNTIME_MAX_CONCURRENT_TURNS` admission control (default 2) that rejects excess concurrent turns with HTTP 429 so subprocesses cannot OOM the host.
+- Add opt-in idle-session garbage collection via `RUNTIME_SESSION_TTL_MS` and `RUNTIME_GC_INTERVAL_MS` to reclaim idle sessions and their on-disk transcripts on long-running containers.
+- Add a "Hosting in production" README section covering the production guards, gateway auth, single-replica session persistence, multi-tenant scope, and SDK × CLI version pinning, with the new env vars documented in the config table and `.env.example`.
+- Add docker-compose production-guard defaults (`RUNTIME_MAX_CONCURRENT_TURNS=2`, `RUNTIME_MAX_TURNS=100`) aligned with the container memory limit.
+- Add a CI smoke job that runs one real end-to-end turn to catch SDK × CLI version drift that stubbed unit tests cannot.
+
+## [0.5.0] - 2026-06-06 — Public release preparation + web redesign
+
+### Added
+
+- Add a README with getting-started, configuration, API, and run instructions.
+- Add an MIT `LICENSE`.
+- Document local (non-container) run variables in `.env.example`, including `RUNTIME_CWD` and `CLAUDE_CONFIG_DIR`, which must point at real, writable local directories for file-writing turns outside Docker.
+- Add a GitHub Actions quality gate running on push and PR to `main`: Biome lint, a typecheck/test/build verify matrix on Node 22 and 24, a Docker image build, and a dependency audit that fails on high or critical advisories.
+
+### Changed
+
+- Redesign the web playground as a Twilio Paste Console shell wired to the live runtime: dark topbar with editable runtime URL and live connection dot, model picker, usage meter, and API-docs toggle; a sessions sidebar with status and turn/token/cost meta; streaming chat with collapsible tool cards, per-turn result rows linking to the Jaeger trace, and a changed-files rail; an empty state with prompt suggestions and an auto-growing composer.
+- Translate all published artifacts to English: README, SECURITY guide, `.env.example`, source comments, OpenAPI summaries/descriptions, and Playground UI labels.
+
+### Removed
+
+- Remove internal design and planning documents from the public repository.
+
+### Fixed
+
+- Auto-load the repo-root `.env` in the dev/start scripts so a freshly cloned repo no longer crashes with "ANTHROPIC_API_KEY is required" when following the README; stays a no-op in Docker and when env is exported in the shell.
+
+### Security
+
+- Upgrade vitest to 4.1.x (resolves 4.1.8) to clear the critical advisory GHSA-5xrq-8626-4rwp (arbitrary file read/exec via the Vitest UI server).
+
+## [0.4.0] - 2026-06-06 — P3: Security & resilience
+
+### Added
+
+- Add a parser-based Bash command allowlist enforced via a PreToolUse hook: splits compound commands on operators and command substitution, strips wrappers (`timeout`, `nice`, `env`, …) and `VAR=val` prefixes, and denies any sub-command whose `argv[0]` is not allowlisted; the deny applies even under bypass-permissions and to sub-agents.
+- Add `RUNTIME_BASH_ALLOWLIST` to override the built-in command allowlist (comma/space-separated; defaults to git, gh, node, npm, python, uv, rg, jq, and other safe tools while excluding `curl`, `wget`, `sudo`, `sh`, `eval`, `xargs`).
+- Add a configurable SSE `: keepalive` heartbeat (`RUNTIME_SSE_HEARTBEAT_MS`, default 20000 ms, 0 to disable) to keep streaming connections alive through idle reverse-proxy timeouts.
+- Add an opt-in egress allowlist script (`container/egress-allowlist.sh`) that default-drops outbound traffic and permits only DNS plus IPs resolved from `EGRESS_ALLOW_DOMAINS` (GitHub, npm, PyPI, and the Anthropic base URL host by default).
+- Document the P3 security model and operations guide (threat model, two-layer Bash enforcement, egress hardening, container hardening, resilience) in `docs/superpowers/SECURITY-p3.md`, with matching `.env.example` entries.
+
+### Changed
+
+- Harden the runtime container in docker-compose: read-only root filesystem with a tmpfs `/tmp`, `cap_drop ALL`, no-new-privileges, and pids/memory/CPU limits.
+- Redirect npm, uv, pnpm, gh, git, and XDG cache/config directories to `/tmp` so tooling works under a read-only root filesystem.
+- Install jq in the runtime image to match the default Bash allowlist.
+
+### Removed
+
+- Remove the `curl` and `wget` binaries from the runtime image (kept only at build time), leaving no network-fetch executables at runtime.
+
+### Security
+
+- Restrict agent shell execution to an allowlist of commands, blocking arbitrary or unexpected binaries before they run.
+- Reduce the container attack surface and egress exposure through read-only rootfs, dropped Linux capabilities, no-new-privileges, resource limits, removal of `curl`/`wget`, and an opt-in network egress allowlist.
+
+## [0.3.0] - 2026-06-05 — P2: OpenTelemetry observability
+
+### Added
+
+- Add OpenTelemetry tracing gated on `OTEL_EXPORTER_OTLP_ENDPOINT`: when set, the runtime starts a NodeSDK OTLP exporter; when unset, spans degrade to no-ops so a bare container produces no connection errors.
+- Emit a per-turn `agent.turn` span (carrying `gen_ai.request.model` and `gen_ai.conversation.id`) with nested per-tool child spans, annotated with `gen_ai.*` attributes including token usage (input/output, cache read/creation), cost in USD, and turn count from each result.
+- Propagate a unified trace into the child Claude Code CLI by injecting a W3C `TRACEPARENT` env var, linking the CLI's native spans under the runtime turn span (`agent.turn` → tool → `claude_code.*`).
+- Surface the trace id to clients via a `traceId` field on `init`/`result` SSE events and an `X-Trace-Id` response header (added to CORS exposeHeaders).
+- Add a docker-compose observability backend stack (OTel Collector + Jaeger + Prometheus) with collector and Prometheus configs, wiring runtime and child-CLI telemetry to the collector.
+- Add an "Open trace in Jaeger" deep-link in the web chat panel that opens the last turn's trace using the configured `JAEGER_BASE_URL`.
+
+## [0.2.0] - 2026-06-04 — P1: Sessions, REST/OpenAPI, web playground, SDK/CLI decoupling
+
+### Added
+
+- Add SSE conversation endpoints: `POST /sessions` starts a turn and `POST /sessions/{id}/turns` resumes a multi-turn session, streaming `init`/`assistant`/`tool_result`/`result` events (plus `error`/`aborted`).
+- Add a session REST API: `GET /sessions` (runtime list with turns, token usage, cost, status, changed files), `GET /sessions/{id}` (info), `GET /sessions/{id}/transcript`, `POST /sessions/{id}/stop` (abort the running turn), and `DELETE /sessions/{id}`.
+- Expose an OpenAPI 3.1 spec at `/openapi.json` and interactive Swagger UI at `/docs`, generated from Zod schemas as the single source of truth.
+- Report the configured model allowlist on the `/config` endpoint alongside default model and version.
+- Add a web playground (`apps/web`, Vite + React + TS) with a connection bar, multi-turn chat panel (live SSE rendering, stop, new conversation), and an embedded API spec view.
+- Add a model allowlist (`RUNTIME_ALLOWED_MODELS`): requests for a model outside the list are rejected with HTTP 400.
+- Add CORS support configurable via `CORS_ORIGINS` (wildcard or comma-separated origins).
+- Add reasoning effort control via `RUNTIME_EFFORT` (low/medium/high/xhigh/max), with invalid values falling back to max.
+- Add SDK/CLI decoupling: drive a separately installed Claude Code CLI via `pathToClaudeCodeExecutable` (`RUNTIME_CLAUDE_CLI_PATH`), so the SDK-bundled binary can be excluded with `--no-optional`.
+
+### Changed
+
+- Change the default reasoning effort to max (the SDK default is only high); override with `RUNTIME_EFFORT`.
+
+## [0.1.0] - 2026-06-04 — P0: Containerized runtime skeleton
+
+### Added
+
+- Add an HTTP runtime service (Hono) exposing `GET /healthz`, `GET /config`, and `POST /sessions` for running a single agent turn.
+- Stream agent turns over Server-Sent Events on `POST /sessions`, mapping SDK messages to `init`, `assistant`, `tool_result`, `result`, and `error` events.
+- Configure the runtime from environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `RUNTIME_DEFAULT_MODEL`, `PORT`, `RUNTIME_HOSTNAME`, `RUNTIME_CWD`, `JAEGER_BASE_URL`, `INCLUDE_PARTIAL_MESSAGES`), with a documented `.env.example`.
+- Ship a container image (Node 22 bookworm-slim) bundling git, gh, ripgrep, and uv-managed Python 3.12, running as a non-root user with the SDK-bundled CLI.
+- Add a container entrypoint that writes fixed agent guidelines to the user-level `CLAUDE.md` and wires gh/git credentials from `GH_TOKEN`, exec-ing the server as PID 1 for correct signal forwarding.
+- Shut down gracefully on SIGTERM/SIGINT, closing the HTTP server before exit.
+
+### Security
+
+- Deny dangerous agent Bash commands by default via `disallowedTools` (`curl`, `wget`, `sudo`, `rm -rf`).
+- Return a generic error with a correlation ID on `/sessions` while logging full details server-side, so internal error detail is never leaked to clients.
+- Default the listen address to loopback (`127.0.0.1`) so the unauthenticated runtime is not silently exposed outside the container.
+- Run the agent in bypass-permissions mode, so the `disallowedTools` deny-list is the only built-in guardrail at this stage.
+
+[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8113e5a...HEAD
+[0.6.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/a9cd553...8113e5a
+[0.5.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/6a023be...a9cd553
+[0.4.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9e7da86...6a023be
+[0.3.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/f06f3c5...9e7da86
+[0.2.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/ba516cb...f06f3c5
+[0.1.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/commits/ba516cb
