@@ -9,6 +9,7 @@ and an agent can run `coding-agent-runtime-delivery-workflow`, which orchestrate
 - Node.js 22+ and pnpm via Corepack: run `corepack enable` once (the repo pins the pnpm version
   in `package.json`). The scripts below call `pnpm` directly; if it is not on your PATH, prefix
   with `corepack ` (e.g. `corepack pnpm verify`).
+- Install dependencies once before running anything else: `pnpm install --frozen-lockfile`.
 - A `.env` at the repo root for turns that hit a model backend (see `.env.example`).
 
 ## The loop
