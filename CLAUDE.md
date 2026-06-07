@@ -12,7 +12,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Layout:** pnpm monorepo — `apps/runtime` (Hono + OpenAPIHono server, session registry, OpenTelemetry spans) and `apps/web` (Vite + React playground). Use `corepack pnpm ...`; pnpm is not on PATH directly.
 
-**Status:** phases P0–P3 complete, plus hosting production guards and a CHANGELOG. Latest milestone is **0.6.0** (`RUNTIME_MAX_TURNS`, optional wall-clock turn timeout, concurrency admission → HTTP 429, idle-session GC). No Git tags yet; every `package.json` stays at `0.0.0` until a first tagged release. See `CHANGELOG.md` for the full history.
+**Status:** phases P0–P3 complete, plus hosting production guards and a CHANGELOG. Current release is **v0.6.0** (`RUNTIME_MAX_TURNS`, optional wall-clock turn timeout, concurrency admission → HTTP 429, idle-session GC) — Git-tagged with a GitHub Release, every `package.json` at `0.6.0`. See `CHANGELOG.md` for the full history.
 
 **Deployment:** single-container, single-tenant / single-task. Docker-ready — `docker compose up -d --build` (runtime + OTel Collector + Jaeger + Prometheus) or a plain `docker run` of the runtime image. Multi-replica / multi-tenant infrastructure (SessionStore, per-tenant isolation) is deliberately deferred and documented in the README "Hosting in production" section; do not add it speculatively.
 
