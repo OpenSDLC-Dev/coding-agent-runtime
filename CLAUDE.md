@@ -4,6 +4,22 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
+## Project Snapshot
+
+> Keep this section current: update it (and the CHANGELOG `[Unreleased]` entry) in the same PR as any change that alters the architecture, deployment model, security posture, or workflow described below.
+
+**What this is:** `coding-agent-runtime` — an HTTP runtime that hosts the Claude Agent SDK as a service. The SDK drives a **decoupled**, separately installed Claude Code CLI (via `pathToClaudeCodeExecutable`, installed with `--no-optional`) over stdio / stream-json, and each turn streams over SSE. The model backend is pluggable via `ANTHROPIC_BASE_URL` (test backend: MiniMax-M3).
+
+**Layout:** pnpm monorepo — `apps/runtime` (Hono + OpenAPIHono server, session registry, OpenTelemetry spans) and `apps/web` (Vite + React playground). Use `corepack pnpm ...`; pnpm is not on PATH directly.
+
+**Status:** phases P0–P3 complete, plus hosting production guards and a CHANGELOG. Latest milestone is **0.6.0** (`RUNTIME_MAX_TURNS`, optional wall-clock turn timeout, concurrency admission → HTTP 429, idle-session GC). No Git tags yet; every `package.json` stays at `0.0.0` until a first tagged release. See `CHANGELOG.md` for the full history.
+
+**Deployment:** single-container, single-tenant / single-task. Docker-ready — `docker compose up -d --build` (runtime + OTel Collector + Jaeger + Prometheus) or a plain `docker run` of the runtime image. Multi-replica / multi-tenant infrastructure (SessionStore, per-tenant isolation) is deliberately deferred and documented in the README "Hosting in production" section; do not add it speculatively.
+
+**Security model:** the agent runs in `bypassPermissions`; the guardrails are a parser-based PreToolUse Bash allowlist (with `disallowedTools` as a backstop) and container hardening (read-only rootfs, `cap_drop: ALL`, no-new-privileges, resource limits, no `curl`/`wget` at runtime). There is **no inbound auth by design** — the runtime binds loopback and expects an auth gateway in front. See `docs/superpowers/SECURITY-p3.md`.
+
+**Workflow (hard rules):** never push to `main` directly — every change goes through a feature branch → PR → CI → **squash** merge. CI runs six jobs (`lint`, `verify` on Node 22 + 24, `docker`, `audit`, `smoke`); the first five are required branch-protection contexts, `smoke` is not. All repo-published artifacts must be in English (see section 5).
+
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
