@@ -23,5 +23,11 @@ if [ -n "${GH_TOKEN:-}" ]; then
   gh auth setup-git
 fi
 
-# 3) exec node to become PID 1, correctly forwarding SIGTERM/SIGINT for graceful shutdown.
+# 3) Expose the runtime version to the app via npm_package_version. npm/pnpm normally set this, but
+#    this entrypoint launches node directly, so without it /config, OpenAPI info.version, and the OTel
+#    service.version all fall back to "0.0.0". Best-effort: that same fallback still applies on failure.
+npm_package_version="$(node -p "require('/app/apps/runtime/package.json').version" 2>/dev/null || true)"
+export npm_package_version
+
+# 4) exec node to become PID 1, correctly forwarding SIGTERM/SIGINT for graceful shutdown.
 exec node /app/apps/runtime/dist/index.js
