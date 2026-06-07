@@ -169,10 +169,20 @@ This runtime follows the [Agent SDK hosting guide](https://code.claude.com/docs/
 ## Development
 
 ```bash
+pnpm verify                            # Biome CI + typecheck + test + build (mirrors required CI)
 pnpm -r run test                       # all tests (runtime + web)
 pnpm --filter @app/runtime typecheck   # type check
 pnpm check                             # Biome format + lint (biome check --write .)
 ```
+
+For an end-to-end check, run one real turn against a running runtime:
+
+```bash
+pnpm --filter @app/runtime dev         # start the runtime on 127.0.0.1:8080
+node scripts/smoke.mjs                 # polls /healthz, runs one turn, asserts init + result
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full plan → TDD → verify → review → PR → squash workflow, also encoded as `coding-agent-runtime-*` skills in `.claude/skills/`.
 
 ## License
 

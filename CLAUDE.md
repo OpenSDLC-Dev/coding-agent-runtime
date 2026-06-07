@@ -18,7 +18,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Security model:** the agent runs in `bypassPermissions`; the guardrails are a parser-based PreToolUse Bash allowlist (with `disallowedTools` as a backstop) and container hardening (read-only rootfs, `cap_drop: ALL`, no-new-privileges, resource limits, no `curl`/`wget` at runtime). There is **no inbound auth by design** — the runtime binds loopback and expects an auth gateway in front. See `docs/superpowers/SECURITY-p3.md`.
 
-**Workflow (hard rules):** never push to `main` directly — every change goes through a feature branch → PR → CI → **squash** merge. CI runs six jobs (`lint`, `verify` on Node 22 + 24, `docker`, `audit`, `smoke`); the first five are required branch-protection contexts, `smoke` is not. All repo-published artifacts must be in English (see section 5).
+**Workflow (hard rules):** never push to `main` directly — every change goes through a feature branch → PR → CI → **squash** merge. CI runs six jobs (`lint`, `verify` on Node 22 + 24, `docker`, `audit`, `smoke`); the first five are required branch-protection contexts, `smoke` is not. All repo-published artifacts must be in English (see section 5). The end-to-end delivery loop (plan → TDD → verify → review → PR → CI → squash) is encoded as `coding-agent-runtime-*` skills in `.claude/skills/`; see `CONTRIBUTING.md`.
 
 ## 1. Think Before Coding
 
