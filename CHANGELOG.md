@@ -13,6 +13,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Add a single `pnpm verify` command (Biome CI + recursive typecheck, test, and build) that mirrors the required CI gates, for a one-shot local pre-push check.
+- Add `scripts/smoke.mjs`, a portable Node end-to-end smoke that polls `/healthz`, runs one real turn over SSE against `POST /sessions`, and asserts the stream carried `init` + `result`; runnable locally against any running runtime and reused by CI.
+
+### Changed
+
+- Refactor the CI `smoke` job to call `scripts/smoke.mjs` instead of inline `curl`/`grep`, so the local and CI real-turn checks share one implementation.
+
 ### Fixed
 
 - Report the real runtime version in the container: the entrypoint launches `node` directly (not via npm/pnpm), so `npm_package_version` was unset and `/config`, the OpenAPI `info.version`, and the OTel `service.version` all fell back to `0.0.0`; the entrypoint now exports it from `apps/runtime/package.json`.
