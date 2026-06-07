@@ -2,6 +2,8 @@
 
 > An HTTP runtime that turns Claude Code into a coding-agent service: the Claude Agent SDK drives a **decoupled** Claude Code CLI, exposing multi-turn coding sessions (SSE streaming), OpenTelemetry observability, and an OpenAPI 3.1 spec.
 
+See [`CHANGELOG.md`](CHANGELOG.md) for the release history.
+
 ## What it is
 
 `coding-agent-runtime` composes the [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) with a **separately installed** [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code) into a stateless HTTP service:
