@@ -5,12 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
-> **Note on versions.** Releases 0.1.0–0.6.0 retroactively document the project's
-> development milestones (phases P0–P3, then public-release preparation and
-> production hardening). They were not cut as Git tags, and `package.json` stays at
-> `0.0.0` until the first tagged release; each date is when the milestone merged.
+> **Note on versions.** Releases 0.1.0–0.5.0 retroactively document the project's
+> development milestones (phases P0–P3, then public-release preparation); they were
+> not cut as Git tags and predate version numbers in `package.json`. `0.6.0`
+> (production hardening) is the first tagged release — annotated tag `v0.6.0`, with
+> every `package.json` at `0.6.0`. Each date is when the milestone merged.
 
 ## [Unreleased]
+
+### Fixed
+
+- Report the real runtime version in the container: the entrypoint launches `node` directly (not via npm/pnpm), so `npm_package_version` was unset and `/config`, the OpenAPI `info.version`, and the OTel `service.version` all fell back to `0.0.0`; the entrypoint now exports it from `apps/runtime/package.json`.
 
 ## [0.6.0] - 2026-06-07 — Hosting production guards
 
