@@ -17,6 +17,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Add a single `pnpm verify` command (Biome CI + recursive typecheck, test, and build) that mirrors the required CI gates, for a one-shot local pre-push check.
 - Add `scripts/smoke.mjs`, a portable Node end-to-end smoke that polls `/healthz`, runs one real turn over SSE against `POST /sessions`, and asserts the stream carried `init` + `result`; runnable locally against any running runtime and reused by CI.
+- Add the `coding-agent-runtime-*` skill set under `.claude/skills/` that encodes the project's delivery loop as reusable, composable skills: `plan`, `tdd`, `verify-runtime`, `verify-web` (browser-driven), `code-review` (isolated pre-merge agent), and the `delivery-workflow` umbrella that orchestrates them through PR, CI, and squash merge.
 
 ### Changed
 
