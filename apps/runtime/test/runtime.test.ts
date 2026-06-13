@@ -236,6 +236,33 @@ describe("runTurn", () => {
   });
 });
 
+describe("runTurn slash-command prompts", () => {
+  // The runtime is prompt-agnostic: slash commands such as /loop and /goal are forwarded to the
+  // agent verbatim — the runtime never intercepts, strips, or rewrites them. These pin that
+  // contract so an SDK/CLI upgrade can't silently start mangling command prompts.
+  const capturePrompt = async (prompt: string): Promise<string | undefined> => {
+    let captured: string | undefined;
+    const capturing: QueryFn = (args) => {
+      captured = args.prompt;
+      return (async function* () {})();
+    };
+    for await (const _e of runTurn({ prompt }, testConfig, capturing)) {
+      // drain
+    }
+    return captured;
+  };
+
+  it("forwards a /loop command prompt to query verbatim", async () => {
+    const prompt = "/loop 5m /healthz keep checking the deploy";
+    expect(await capturePrompt(prompt)).toBe(prompt);
+  });
+
+  it("forwards a /goal command prompt to query verbatim", async () => {
+    const prompt = "/goal ship the feature and keep the tests green";
+    expect(await capturePrompt(prompt)).toBe(prompt);
+  });
+});
+
 describe("runTurn telemetry", () => {
   let exporter: InMemorySpanExporter;
   let provider: BasicTracerProvider;
