@@ -5,17 +5,6 @@ import type {
   SdkPluginConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 
-/**
- * The safe subset of the SDK `Options` an extension is allowed to contribute.
- *
- * This is deliberately a hand-written interface, NOT `Partial<Options>`: the
- * security-perimeter fields (`permissionMode`, `allowDangerouslySkipPermissions`,
- * `settingSources`, `systemPrompt`, `env`, `cwd`, `model`, `effort`,
- * `disallowedTools`, `maxTurns`, `resume`, ...) are intentionally absent, so an
- * extension cannot even express a change to them. The runtime composer
- * (`applyExtensions`) is the only place these contributions touch the real
- * `Options`, and it never reads anything outside this shape.
- */
 /** Read-only runtime facts handed to an extension's `setup()`. */
 export interface ExtensionContext {
   /** The runtime working directory (`RuntimeConfig.cwd`), e.g. for resolving relative paths. */
@@ -34,6 +23,17 @@ export interface Extension {
   setup(ctx: ExtensionContext): ExtensionContributions | Promise<ExtensionContributions>;
 }
 
+/**
+ * The safe subset of the SDK `Options` an extension is allowed to contribute.
+ *
+ * This is deliberately a hand-written interface, NOT `Partial<Options>`: the
+ * security-perimeter fields (`permissionMode`, `allowDangerouslySkipPermissions`,
+ * `settingSources`, `systemPrompt`, `env`, `cwd`, `model`, `effort`,
+ * `disallowedTools`, `maxTurns`, `resume`, ...) are intentionally absent, so an
+ * extension cannot even express a change to them. The runtime composer
+ * (`applyExtensions`) is the only place these contributions touch the real
+ * `Options`, and it never reads anything outside this shape.
+ */
 export interface ExtensionContributions {
   /** Custom in-process tools (via `createSdkMcpServer`) and/or external MCP servers. */
   mcpServers?: Record<string, McpServerConfig>;
