@@ -1,4 +1,4 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "../src/agent/config.js";
 import type { QueryFn } from "../src/agent/runtime.js";
 import { DEFAULT_BASH_ALLOWLIST } from "../src/permissions/bash-allowlist.js";
@@ -81,6 +81,22 @@ export function fakeQueryFn(messages: SDKMessage[]): QueryFn {
     (async function* () {
       for (const m of messages) yield m;
     })();
+}
+
+// Like fakeQueryFn, but records the Options it was called with so a test can assert
+// what runTurn composed (e.g. that extension contributions reached the SDK).
+export function recordingQueryFn(messages: SDKMessage[] = []): {
+  queryFn: QueryFn;
+  captured: () => Options | undefined;
+} {
+  let captured: Options | undefined;
+  const queryFn: QueryFn = (args) => {
+    captured = args.options;
+    return (async function* () {
+      for (const m of messages) yield m;
+    })();
+  };
+  return { queryFn, captured: () => captured };
 }
 
 // Read an app.request SSE response into an array of event names plus the raw text, to make assertions easier.
