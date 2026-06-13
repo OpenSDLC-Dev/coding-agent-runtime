@@ -42,7 +42,7 @@ RUN set -eux; \
 # Here we install the [standalone] native CLI binary globally; at runtime the SDK's pathToClaudeCodeExecutable points at it (see ENV RUNTIME_CLAUDE_CLI_PATH).
 # The version uses a build ARG so it can be bumped independently (docker build --build-arg CLAUDE_CODE_VERSION=...).
 # Note: the platform binary bundled with the SDK is not baked into the image -- the pnpm install below uses --no-optional to skip its optional platform packages.
-ARG CLAUDE_CODE_VERSION=2.1.162
+ARG CLAUDE_CODE_VERSION=2.1.177
 RUN set -eux; \
     npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}; \
     chmod -R a+rX /usr/local/lib/node_modules/@anthropic-ai 2>/dev/null || true; \

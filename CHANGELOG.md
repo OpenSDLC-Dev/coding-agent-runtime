@@ -19,9 +19,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Add `scripts/smoke.mjs`, a portable Node end-to-end smoke that polls `/healthz`, runs one real turn over SSE against `POST /sessions`, and asserts the stream carried `init` + `result`; runnable locally against any running runtime and reused by CI.
 - Add the `coding-agent-runtime-*` skill set under `.claude/skills/` that encodes the project's delivery loop as reusable, composable skills: `plan`, `tdd`, `verify-runtime`, `verify-web` (browser-driven), `code-review` (isolated pre-merge agent), and the `delivery-workflow` umbrella that orchestrates them through PR, CI, and squash merge.
 - Add a `CONTRIBUTING.md` documenting the plan → TDD → verify → review → PR → squash workflow and a pull request template, and point the README "Development" section at `pnpm verify` and `node scripts/smoke.mjs`.
+- Add regression tests pinning that the runtime forwards slash-command prompts (e.g. `/loop`, `/goal`) verbatim to the agent through both `runTurn` and the `POST /sessions` SSE route, locking the prompt-agnostic contract so an SDK/CLI upgrade cannot silently mangle command prompts.
 
 ### Changed
 
+- Upgrade the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` 0.3.161 → 0.3.177) and the decoupled standalone Claude Code CLI (`CLAUDE_CODE_VERSION` 2.1.162 → 2.1.177 in the Dockerfile) to their latest releases, keeping the deliberately version-pinned SDK × CLI pair in lockstep; the `smoke` job's one real turn (against the MiniMax-M3 Anthropic-compatible backend) covers the end-to-end upgrade.
 - Refactor the CI `smoke` job to call `scripts/smoke.mjs` instead of inline `curl`/`grep`, so the local and CI real-turn checks share one implementation.
 
 ### Fixed

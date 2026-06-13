@@ -43,6 +43,29 @@ describe("SSE routes", () => {
     expect(rec?.outputTokens).toBe(20);
   });
 
+  it("forwards a /goal slash-command prompt through POST /sessions verbatim", async () => {
+    // End-to-end (route → runTurn → query) guard that a slash command is streamed as a normal
+    // turn and reaches the SDK unchanged; the runtime adds no loop/goal semantics of its own.
+    let capturedPrompt: string | undefined;
+    const capturing: QueryFn = (args) => {
+      capturedPrompt = args.prompt;
+      return (async function* () {
+        for (const m of sampleMessages) yield m;
+      })();
+    };
+    const { app } = makeApp({ queryFn: capturing });
+    const prompt = "/goal upgrade the SDK and keep the tests green";
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    expect(res.status).toBe(200);
+    const { events } = await collectSse(res);
+    expect(events).toEqual(["init", "assistant", "tool_result", "result"]);
+    expect(capturedPrompt).toBe(prompt);
+  });
+
   it("POST /sessions rejects an empty prompt with 400", async () => {
     const { app } = makeApp();
     const res = await app.request("/sessions", {
