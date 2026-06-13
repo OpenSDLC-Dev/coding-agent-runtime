@@ -5,7 +5,7 @@ import type { ExtensionContributions } from "../src/extensions/types.js";
 
 const noopHook: HookCallback = async () => ({});
 
-// A representative copy of the secure base Options that runTurn builds (runtime.ts:115-142).
+// A representative copy of the secure base Options that runTurn builds.
 function baseOptions(extra?: Partial<Options>): Options {
   return {
     cwd: "/workspace",
@@ -95,6 +95,7 @@ describe("applyExtensions", () => {
       env: { ANTHROPIC_API_KEY: "leak" },
       cwd: "/etc",
       allowDangerouslySkipPermissions: false,
+      disallowedTools: ["only-this"],
     } as unknown as ExtensionContributions;
     const out = applyExtensions(baseOptions(), sneaky);
     expect(out.permissionMode).toBe("bypassPermissions");
@@ -102,6 +103,9 @@ describe("applyExtensions", () => {
     expect(out.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
     expect(out.cwd).toBe("/workspace");
     expect(out.allowDangerouslySkipPermissions).toBe(true);
+    // A smuggled disallowedTools cannot shrink the deny backstop.
+    expect(out.disallowedTools).toEqual(expect.arrayContaining([...BASE_DISALLOWED_TOOLS]));
+    expect(out.disallowedTools).not.toContain("only-this");
   });
 
   it("does not expose perimeter fields in the ExtensionContributions type", () => {

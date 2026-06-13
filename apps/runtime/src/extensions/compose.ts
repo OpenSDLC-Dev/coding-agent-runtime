@@ -29,8 +29,9 @@ function union(a: readonly string[] | undefined, b: readonly string[] | undefine
 /**
  * Merge an extension's contributions into the fully-built secure base Options.
  *
- * This is the single chokepoint where extensions touch `Options`. It is pure,
- * and it enforces the security invariants structurally + by construction:
+ * This is the single chokepoint where extensions touch `Options`. It never
+ * mutates `base`, and it enforces the security invariants structurally + by
+ * construction:
  * - Perimeter fields are never read from `contributions` (they aren't in the
  *   type, and we only ever copy them from `base`).
  * - The Bash allowlist hook (base `PreToolUse[0]`) is always kept and stays
