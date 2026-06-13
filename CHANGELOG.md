@@ -8,10 +8,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > **Note on versions.** Releases 0.1.0–0.5.0 retroactively document the project's
 > development milestones (phases P0–P3, then public-release preparation); they were
 > not cut as Git tags and predate version numbers in `package.json`. `0.6.0`
-> (production hardening) is the first tagged release — annotated tag `v0.6.0`, with
-> every `package.json` at `0.6.0`. Each date is when the milestone merged.
+> (production hardening) is the first tagged release — annotated tag `v0.6.0`, the point at
+> which every `package.json` moved off `0.0.0` to a real, synchronized version. Each date is
+> when the milestone merged.
 
 ## [Unreleased]
+
+## [0.7.0] - 2026-06-13 — Delivery workflow & SDK/CLI refresh
 
 ### Added
 
@@ -145,7 +148,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Default the listen address to loopback (`127.0.0.1`) so the unauthenticated runtime is not silently exposed outside the container.
 - Run the agent in bypass-permissions mode, so the `disallowedTools` deny-list is the only built-in guardrail at this stage.
 
-[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8113e5a...HEAD
+[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9de19ce...HEAD
+[0.7.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8113e5a...9de19ce
 [0.6.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/a9cd553...8113e5a
 [0.5.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/6a023be...a9cd553
 [0.4.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9e7da86...6a023be
