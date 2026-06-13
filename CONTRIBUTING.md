@@ -46,3 +46,13 @@ and an agent can run `coding-agent-runtime-delivery-workflow`, which orchestrate
   messages, the repo description).
 - **Simplicity first; surgical changes** — every changed line should trace to the request. See
   `CLAUDE.md` for the full guidelines.
+
+## Release naming
+
+When cutting a tagged release from `main`:
+
+- **Git tag:** the bare semver `vX.Y.Z` (annotated), e.g. `v0.6.0`. Git tag names cannot contain
+  spaces, so the tag ref stays unprefixed.
+- **GitHub Release title:** `coding-agent-runtime vX.Y.Z` — the project-prefixed, space-bearing
+  name lives in the release title, not the tag ref. An optional ` — <theme>` suffix is allowed,
+  e.g. `coding-agent-runtime v0.6.0 — Hosting production guards`.

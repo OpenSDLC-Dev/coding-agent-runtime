@@ -20,6 +20,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Add the `coding-agent-runtime-*` skill set under `.claude/skills/` that encodes the project's delivery loop as reusable, composable skills: `plan`, `tdd`, `verify-runtime`, `verify-web` (browser-driven), `code-review` (isolated pre-merge agent), and the `delivery-workflow` umbrella that orchestrates them through PR, CI, and squash merge.
 - Add a `CONTRIBUTING.md` documenting the plan → TDD → verify → review → PR → squash workflow and a pull request template, and point the README "Development" section at `pnpm verify` and `node scripts/smoke.mjs`.
 - Add regression tests pinning that the runtime forwards slash-command prompts (e.g. `/loop`, `/goal`) verbatim to the agent through both `runTurn` and the `POST /sessions` SSE route, locking the prompt-agnostic contract so an SDK/CLI upgrade cannot silently mangle command prompts.
+- Document the release naming convention in `CONTRIBUTING.md`: the Git tag is the bare semver `vX.Y.Z`, while the GitHub Release title carries the project name as `coding-agent-runtime vX.Y.Z` (since a Git tag ref cannot contain spaces).
 
 ### Changed
 
