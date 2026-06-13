@@ -7,7 +7,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type QueryFn, runTurn } from "../src/agent/runtime.js";
-import { fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
+import { fakeQueryFn, recordingQueryFn, sampleMessages, testConfig } from "./helpers.js";
 
 describe("runTurn", () => {
   it("maps SDK messages into ordered SSE events", async () => {
@@ -200,6 +200,24 @@ describe("runTurn", () => {
     expect(matchers).toHaveLength(1);
     expect(matchers?.[0]?.matcher).toBe("Bash");
     expect(matchers?.[0]?.hooks).toHaveLength(1);
+  });
+
+  it("threads extension contributions into query options without breaching the perimeter", async () => {
+    const { queryFn, captured } = recordingQueryFn();
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, queryFn, {
+      mcpServers: { demo: { type: "sdk", name: "demo" } as never },
+      allowedTools: ["mcp__demo__ping"],
+    })) {
+      // drain
+    }
+    expect(captured()?.mcpServers?.demo).toBeDefined();
+    expect(captured()?.allowedTools).toContain("mcp__demo__ping");
+    // the security perimeter is untouched
+    expect(captured()?.permissionMode).toBe("bypassPermissions");
+    expect(captured()?.hooks?.PreToolUse?.[0]?.matcher).toBe("Bash");
+    expect(captured()?.disallowedTools).toEqual(
+      expect.arrayContaining(["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)"]),
+    );
   });
 
   it("the registered hook denies a command outside the configured allowlist", async () => {

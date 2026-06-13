@@ -1,6 +1,8 @@
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
 import { isSpanContextValid, type Span, SpanStatusCode } from "@opentelemetry/api";
+import { applyExtensions, BASE_DISALLOWED_TOOLS } from "../extensions/compose.js";
+import type { ExtensionContributions } from "../extensions/types.js";
 import { startToolSpan, startTurnSpan, traceparentOf } from "../otel/spans.js";
 import { setUsageAttributes } from "../otel/usage.js";
 import { createBashAllowlistHook } from "../permissions/bash-allowlist.js";
@@ -99,6 +101,7 @@ export async function* runTurn(
   input: RunTurnInput,
   cfg: RuntimeConfig,
   queryFn: QueryFn = defaultQuery,
+  contributions: ExtensionContributions = {},
 ): AsyncGenerator<SseEvent> {
   const span = startTurnSpan({
     model: input.model ?? cfg.defaultModel,
@@ -112,18 +115,20 @@ export async function* runTurn(
   // Only inject TRACEPARENT when the span context is valid (a real TracerProvider has started), to avoid feeding the child CLI an all-zero id.
   if (traceId) env.TRACEPARENT = traceparentOf(span);
 
-  const options: Options = {
+  // The secure base Options. Every security-perimeter field is defined here and only here;
+  // extension contributions are merged on top by applyExtensions, which cannot reach these fields.
+  const baseOptions: Options = {
     cwd: cfg.cwd,
     model: input.model ?? cfg.defaultModel,
     // Reasoning effort is maxed out by default (cfg.effort defaults to "max", adjustable via RUNTIME_EFFORT); see config.ts for details.
     effort: cfg.effort,
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
-    // P0 safety fallback: deny always wins, blocking network access / privilege escalation / dangerous deletes. This is a hard fallback that does not depend on file settings;
-    // the full PreToolUse Bash allowlist (parsing && | ; splits, stripping wrappers) is still scheduled for P3 (spec §6).
-    disallowedTools: ["Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(rm -rf:*)"],
+    // P0 safety fallback: deny always wins, blocking network access / privilege escalation / dangerous deletes. This is a hard fallback that does not depend on file settings.
+    // Single source of truth shared with applyExtensions, which always re-asserts it (deny wins over any extension allowedTools).
+    disallowedTools: [...BASE_DISALLOWED_TOOLS],
     // P3 layer 1: parsing-based Bash allowlist (PreToolUse deny bypasses canUseTool, blocks even bypass mode, and covers sub-agents).
-    // Layered on top of the disallowedTools fallback above: deny always wins.
+    // Layered on top of the disallowedTools fallback above: deny always wins. Extension hooks are appended after this matcher, never replacing it.
     hooks: {
       PreToolUse: [{ matcher: "Bash", hooks: [createBashAllowlistHook(cfg.bashAllowlist)] }],
     },
@@ -140,6 +145,10 @@ export async function* runTurn(
     ...(cfg.claudeCliPath ? { pathToClaudeCodeExecutable: cfg.claudeCliPath } : {}),
     ...(input.resumeId ? { resume: input.resumeId } : {}),
   };
+
+  // Merge operator-supplied extensions (custom tools / MCP / hooks / skills) into the base.
+  // No-op when contributions is empty (the default), so the base behavior is unchanged.
+  const options = applyExtensions(baseOptions, contributions);
 
   // Optional wall-clock deadline: abort this turn's controller after turnTimeoutMs (the abort path yields an `aborted` event).
   let timeout: ReturnType<typeof setTimeout> | undefined;
