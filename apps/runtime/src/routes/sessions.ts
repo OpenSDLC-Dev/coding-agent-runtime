@@ -11,6 +11,7 @@ import {
   type SessionRecord,
   type SessionRegistry,
 } from "../agent/session-store.js";
+import type { ExtensionContributions } from "../extensions/types.js";
 import {
   CreateSessionBody,
   DeleteResponse,
@@ -52,6 +53,7 @@ export interface SessionRouteDeps {
   queryFn?: QueryFn;
   sdk: SessionSdk;
   version: string;
+  contributions?: ExtensionContributions;
 }
 
 function readBody(c: Context): Promise<{ prompt?: unknown; model?: unknown }> {
@@ -99,7 +101,12 @@ async function streamTurn(
   };
 
   const abortController = new AbortController();
-  const gen = runTurn({ ...input, abortController }, deps.config, deps.queryFn);
+  const gen = runTurn(
+    { ...input, abortController },
+    deps.config,
+    deps.queryFn,
+    deps.contributions ?? {},
+  );
 
   // Pre-read the first event (usually init), register the session; don't use break to avoid closing the generator.
   let sid = input.resumeId;

@@ -6,6 +6,7 @@ import type { RuntimeConfig } from "./agent/config.js";
 import type { QueryFn } from "./agent/runtime.js";
 import { startSessionGc } from "./agent/session-gc.js";
 import { SessionRegistry } from "./agent/session-store.js";
+import type { ExtensionContributions } from "./extensions/types.js";
 import { registerSessionRoutes, type SessionSdk } from "./routes/sessions.js";
 
 export interface ServerDeps {
@@ -14,6 +15,7 @@ export interface ServerDeps {
   registry?: SessionRegistry;
   sdk?: SessionSdk;
   version?: string;
+  contributions?: ExtensionContributions;
 }
 
 export function createServer(deps: ServerDeps): OpenAPIHono {
@@ -47,7 +49,14 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
     }),
   );
 
-  registerSessionRoutes(app, { config, queryFn: deps.queryFn, registry, sdk, version });
+  registerSessionRoutes(app, {
+    config,
+    queryFn: deps.queryFn,
+    registry,
+    sdk,
+    version,
+    contributions: deps.contributions,
+  });
 
   app.doc31("/openapi.json", {
     openapi: "3.1.0",
