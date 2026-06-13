@@ -30,6 +30,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Report the real runtime version in the container: the entrypoint launches `node` directly (not via npm/pnpm), so `npm_package_version` was unset and `/config`, the OpenAPI `info.version`, and the OTel `service.version` all fell back to `0.0.0`; the entrypoint now exports it from `apps/runtime/package.json`.
 
+### Security
+
+- Resolve the GHSA-gv7w-rqvm-qjhr high-severity advisory in transitive, build-time-only `esbuild` (`<0.28.1`, pulled in via `tsx` and `vite`) by pinning `esbuild` to `^0.28.1` through a root `pnpm.overrides` entry, so the CI `audit` gate (`pnpm audit --audit-level high`) is clean again. esbuild is a build/dev tool and is not present in the production container image.
+
 ## [0.6.0] - 2026-06-07 — Hosting production guards
 
 ### Added
