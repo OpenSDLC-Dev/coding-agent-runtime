@@ -44,9 +44,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: |
-          pnpm --filter @app/runtime typecheck
-          pnpm --filter @app/web typecheck
+        run: pnpm -r run typecheck
       - name: Test
         run: pnpm -r run test
       - name: Build

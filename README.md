@@ -46,6 +46,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the release history.
 | --- | --- |
 | `apps/runtime` | HTTP service (Hono + OpenAPIHono): SDK-drives-CLI, session registry, OTel, security hook |
 | `apps/web` | Standalone front-end Playground (Vite + React, browser-only client of the runtime) |
+| `apps/bench` | Benchmark harness: drives the runtime as a black box over HTTP/SSE and scores it (walking skeleton; see `scripts/bench.mjs`) |
 | `otel/` | OTel Collector / Prometheus config |
 | `docs/superpowers/` | Security threat model (`SECURITY-p3.md`) |
 | `docker-compose.yml` | runtime + otel-collector + jaeger + prometheus, one stack |
