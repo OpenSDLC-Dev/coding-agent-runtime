@@ -142,6 +142,8 @@ Full list and notes in [`.env.example`](.env.example).
 
 The runtime ships a self-contained extension subsystem (`apps/runtime/src/extensions/`) for adding **custom tools, external MCP servers, hooks, and skills** without touching the core. Every contribution is built once at startup and merged onto the secure base `Options` by a single pure composer (`applyExtensions`); with nothing configured, behavior is unchanged.
 
+See [`docs/extensions.md`](docs/extensions.md) for the full authoring guide — the field-by-field merge semantics, worked code-tier examples, the declarative manifest schema, and troubleshooting.
+
 Two authoring tiers:
 
 - **Code tier (`builtin.ts`)** — for in-process custom tools (`createSdkMcpServer` + `tool()`) and hook callbacks, which are live JS and can't be expressed as data. Implement the `Extension` contract (`name` + `setup(ctx)`) and add it to `BUILTIN_EXTENSIONS`; it compiles into the image.
