@@ -24,6 +24,11 @@ export interface BenchInstance {
   prompt: string;
   /** Workspace-relative path -> file content, materialized into a clean workspace before the turn. */
   seedFiles: Record<string, string>;
+  /** Optional async workspace materialization run AFTER resetWorkspace and BEFORE seedFiles — the seam
+   *  for setup that static file contents cannot express, e.g. `git clone` of a repo at a base commit
+   *  (SWE-bench). Anything it creates under the workspace is wiped on the next instance's reset; the
+   *  runner unconditionally removes a `.git` it leaves so the reset's repo-guard never trips. */
+  prepare?: (workspaceDir: string) => Promise<void>;
   /** Inspect the post-turn workspace; resolve true when the task is solved. Used by localCheckScorer. */
   check?: (workspaceDir: string) => Promise<boolean>;
 }
@@ -32,5 +37,9 @@ export interface BenchInstance {
 export interface BenchAdapter {
   name: string;
   datasetSplit: string;
+  /** Optional async initialization (e.g. read a dataset file off disk) the runner awaits before it
+   *  first calls instances(). Keeping it on the interface — rather than an out-of-band method — means
+   *  the runner always invokes it, so an adapter that needs loading cannot be silently used unloaded. */
+  load?(): Promise<void>;
   instances(): BenchInstance[];
 }

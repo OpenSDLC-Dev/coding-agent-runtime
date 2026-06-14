@@ -1,8 +1,13 @@
-// The outer loop: for each instance, reset + seed the workspace, drive one turn against the runtime,
-// score the post-turn workspace, and record a result. Sequential by design — the runtime is single
-// workspace / single task, so instances cannot share a workspace. Aggregates into a validated
-// RunReport. Token/cost/turn figures are pure aggregation of what the `result` SSE event already
-// reports; the harness adds no new measurement.
+// The outer loop: for each instance, reset + prepare + seed the workspace, drive one turn against the
+// runtime, and record a result. Sequential by design — the runtime is single workspace / single task,
+// so instances cannot share a workspace. Aggregates into a validated RunReport. Token/cost/turn figures
+// are pure aggregation of what the `result` SSE event already reports; the harness adds no measurement.
+//
+// Two scoring modes:
+//   - per-instance (`scorer`): score the post-turn workspace inline (the local hello-bench path).
+//   - batch (`batch`): some graders (SWE-bench) cannot score one instance at a time — they take the
+//     whole run's predictions in one shot. So we collect a Prediction per completed turn, score them
+//     all once after the loop, and fold the per-instance verdicts back in.
 
 import {
   type InstanceResult,
@@ -10,21 +15,47 @@ import {
   type RunReport,
   RunReportSchema,
 } from "./report/schema.js";
-import type { Scorer } from "./scorer/types.js";
+import type { BatchScorer, Prediction, Scorer } from "./scorer/types.js";
 import type { RuntimeClient } from "./sse-client.js";
 import type { BenchAdapter, BenchInstance, TurnOutcome } from "./types.js";
-import { resetWorkspace, seedFiles } from "./workspace.js";
+import { removeGitDir, resetWorkspace, seedFiles } from "./workspace.js";
+
+/** Batch scoring for graders that evaluate the whole run's predictions at once (e.g. SWE-bench). */
+export interface BatchConfig {
+  scorer: BatchScorer;
+  /** Collect the agent's solution as a unified diff from the post-turn workspace (injectable git). */
+  collectPatch: (workspaceDir: string) => Promise<string>;
+  /** model_name_or_path stamped on each prediction. */
+  modelName: string;
+}
 
 export interface RunOptions {
   adapter: BenchAdapter;
   client: RuntimeClient;
-  scorer: Scorer;
   workspaceDir: string;
+  /** Per-instance scorer (hello-bench). Exactly one of `scorer` / `batch` must be set. */
+  scorer?: Scorer;
+  /** Batch scorer (SWE-bench). Exactly one of `scorer` / `batch` must be set. */
+  batch?: BatchConfig;
   model?: string;
   /** Injectable clock for deterministic tests; defaults to Date.now. */
   now?: () => number;
   /** Optional progress sink. */
   log?: (message: string) => void;
+}
+
+function baseResult(instanceId: string, outcome: TurnOutcome, wallTimeMs: number): InstanceResult {
+  return {
+    instanceId,
+    status: "errored",
+    turns: outcome.numTurns,
+    inputTokens: outcome.inputTokens,
+    outputTokens: outcome.outputTokens,
+    costUsd: outcome.costUsd,
+    wallTimeMs,
+    sessionId: outcome.sessionId,
+    traceId: outcome.traceId,
+  };
 }
 
 async function classify(
@@ -77,30 +108,60 @@ function buildReport(
 }
 
 export async function runBenchmark(opts: RunOptions): Promise<RunReport> {
+  if ((opts.scorer ? 1 : 0) + (opts.batch ? 1 : 0) !== 1) {
+    throw new Error("runBenchmark requires exactly one of `scorer` or `batch`");
+  }
+  await opts.adapter.load?.();
   const now = opts.now ?? Date.now;
   const log = opts.log ?? ((): void => {});
   const startedAt = now();
   const results: InstanceResult[] = [];
+  const predictions: Prediction[] = [];
+  // Results awaiting a batch verdict, by instance id. They share object identity with `results`, so
+  // overwriting status here after scoring is reflected in the final report.
+  const pending = new Map<string, InstanceResult>();
 
   for (const instance of opts.adapter.instances()) {
     const t0 = now();
     let result: InstanceResult;
     try {
+      // resetWorkspace runs OUTSIDE the cleanup scope below: its repo-root guard must be able to refuse
+      // a misconfigured workspace (a real checkout) *before* anything — including .git removal — runs.
       await resetWorkspace(opts.workspaceDir);
-      await seedFiles(opts.workspaceDir, instance.seedFiles);
-      const outcome = await opts.client.runTurn({ prompt: instance.prompt, model: opts.model });
-      const status = await classify(instance, outcome, opts.scorer, opts.workspaceDir);
-      result = {
-        instanceId: instance.id,
-        status,
-        turns: outcome.numTurns,
-        inputTokens: outcome.inputTokens,
-        outputTokens: outcome.outputTokens,
-        costUsd: outcome.costUsd,
-        wallTimeMs: now() - t0,
-        sessionId: outcome.sessionId,
-        traceId: outcome.traceId,
-      };
+      try {
+        if (instance.prepare) await instance.prepare(opts.workspaceDir);
+        await seedFiles(opts.workspaceDir, instance.seedFiles);
+        const outcome = await opts.client.runTurn({ prompt: instance.prompt, model: opts.model });
+        if (opts.batch) {
+          if (outcome.terminal === "result" && !outcome.isError) {
+            const patch = await opts.batch.collectPatch(opts.workspaceDir);
+            predictions.push({
+              instance_id: instance.id,
+              model_name_or_path: opts.batch.modelName,
+              model_patch: patch,
+            });
+            result = baseResult(instance.id, outcome, now() - t0); // status filled by batch scoring
+            pending.set(instance.id, result);
+          } else {
+            result = {
+              ...baseResult(instance.id, outcome, now() - t0),
+              status: outcome.terminal === "aborted" ? "timeout" : "errored",
+            };
+          }
+        } else {
+          const status = await classify(
+            instance,
+            outcome,
+            opts.scorer as Scorer,
+            opts.workspaceDir,
+          );
+          result = { ...baseResult(instance.id, outcome, now() - t0), status };
+        }
+      } finally {
+        // Unconditionally remove any .git a prepare() clone left, even on a timed-out/errored turn (the
+        // common SWE-bench case), so the next instance's resetWorkspace sees a plain tree.
+        await removeGitDir(opts.workspaceDir);
+      }
     } catch (err) {
       result = {
         instanceId: instance.id,
@@ -117,6 +178,19 @@ export async function runBenchmark(opts: RunOptions): Promise<RunReport> {
     }
     log(`${instance.id}: ${result.status}`);
     results.push(result);
+  }
+
+  if (opts.batch) {
+    const verdicts = await opts.batch.scorer.scoreAll(predictions);
+    for (const [id, result] of pending) {
+      const verdict = verdicts.get(id);
+      if (!verdict || verdict.errored) {
+        result.status = "errored";
+        result.error = verdict?.detail ?? "instance missing from scorer report";
+      } else {
+        result.status = verdict.resolved ? "resolved" : "unresolved";
+      }
+    }
   }
 
   return buildReport(opts.adapter.name, startedAt, now(), results);

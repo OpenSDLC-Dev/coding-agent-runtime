@@ -26,6 +26,10 @@ Thumbs.db
 
 # Benchmark harness default workspace (apps/bench seeds instances here when run locally)
 .bench-workspace/
+# Benchmark harness report dir (predictions.json + scorer reports) and the swebench grader's logs
+.bench-reports/
+logs/run_evaluation/
+logs/build_images/
 
 # Internal design/planning docs — kept local, not published to the public repo
 docs/superpowers/plans/

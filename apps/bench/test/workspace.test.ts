@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetWorkspace, seedFiles } from "../src/workspace.js";
+import { removeGitDir, resetWorkspace, seedFiles } from "../src/workspace.js";
 
 describe("workspace safety", () => {
   let ws: string;
@@ -37,5 +37,20 @@ describe("workspace safety", () => {
     await seedFiles(ws, { "src/add.mjs": "export const a = 1;\n", "top.txt": "hi" });
     expect(await readFile(join(ws, "src/add.mjs"), "utf8")).toContain("export const a");
     expect(await readFile(join(ws, "top.txt"), "utf8")).toBe("hi");
+  });
+
+  it("removeGitDir deletes a .git but keeps other files, and is a no-op when absent", async () => {
+    await mkdir(join(ws, ".git"), { recursive: true });
+    await writeFile(join(ws, "keep.txt"), "x", "utf8");
+    await removeGitDir(ws);
+    const entries = await readdir(ws);
+    expect(entries).toContain("keep.txt");
+    expect(entries).not.toContain(".git");
+    // Idempotent: removing again with no .git present does not throw.
+    await expect(removeGitDir(ws)).resolves.toBeUndefined();
+  });
+
+  it("removeGitDir refuses a non-absolute path", async () => {
+    await expect(removeGitDir("relative/dir")).rejects.toThrow(/absolute path/);
   });
 });

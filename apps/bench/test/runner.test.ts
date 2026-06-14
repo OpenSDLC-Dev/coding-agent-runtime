@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runBenchmark } from "../src/runner.js";
 import { stubScorer } from "../src/scorer/stub.js";
+import type { BatchScorer, Prediction } from "../src/scorer/types.js";
 import type { RuntimeClient } from "../src/sse-client.js";
 import type { BenchAdapter, TurnOutcome } from "../src/types.js";
 
@@ -125,5 +126,197 @@ describe("runBenchmark", () => {
       workspaceDir: ws,
     });
     expect(report.instances[0]?.status).toBe("errored");
+  });
+
+  it("requires exactly one of scorer or batch", async () => {
+    await expect(
+      runBenchmark({
+        adapter: oneInstanceAdapter("x", "p"),
+        client: fakeClient({}),
+        workspaceDir: ws,
+      }),
+    ).rejects.toThrow(/exactly one/);
+  });
+
+  it("awaits adapter.load() before reading instances()", async () => {
+    let loaded = false;
+    const adapter: BenchAdapter = {
+      name: "t",
+      datasetSplit: "x",
+      async load() {
+        loaded = true;
+      },
+      instances() {
+        if (!loaded) throw new Error("instances() called before load()");
+        return [{ id: "i", prompt: "p", seedFiles: {} }];
+      },
+    };
+    const report = await runBenchmark({
+      adapter,
+      client: fakeClient({ p: outcome({}) }),
+      scorer: stubScorer({ i: { resolved: true } }),
+      workspaceDir: ws,
+    });
+    expect(report.instances[0]?.status).toBe("resolved");
+  });
+
+  it("calls prepare after reset and before seedFiles + the turn", async () => {
+    const order: string[] = [];
+    const adapter: BenchAdapter = {
+      name: "t",
+      datasetSplit: "x",
+      instances: () => [
+        {
+          id: "i",
+          prompt: "p",
+          seedFiles: { "seed.txt": "x" },
+          async prepare(wsDir) {
+            order.push("prepare");
+            // resetWorkspace emptied the dir and seedFiles has not run yet.
+            expect(await readdir(wsDir)).not.toContain("seed.txt");
+          },
+        },
+      ],
+    };
+    const client: RuntimeClient = {
+      async health() {
+        return true;
+      },
+      async runTurn() {
+        order.push("turn");
+        // seedFiles ran before the turn.
+        expect(await readdir(ws)).toContain("seed.txt");
+        return outcome({});
+      },
+    };
+    await runBenchmark({
+      adapter,
+      client,
+      scorer: stubScorer({ i: { resolved: true } }),
+      workspaceDir: ws,
+    });
+    expect(order).toEqual(["prepare", "turn"]);
+  });
+
+  it("errors a failing prepare but continues the run", async () => {
+    const adapter: BenchAdapter = {
+      name: "t",
+      datasetSplit: "x",
+      instances: () => [
+        {
+          id: "bad",
+          prompt: "p1",
+          seedFiles: {},
+          prepare: async () => {
+            throw new Error("clone failed");
+          },
+        },
+        { id: "ok", prompt: "p2", seedFiles: {} },
+      ],
+    };
+    const report = await runBenchmark({
+      adapter,
+      client: fakeClient({ p2: outcome({}) }),
+      scorer: stubScorer({ ok: { resolved: true } }),
+      workspaceDir: ws,
+    });
+    expect(report.instances[0]?.status).toBe("errored");
+    expect(report.instances[0]?.error).toMatch(/clone failed/);
+    expect(report.instances[1]?.status).toBe("resolved");
+  });
+
+  it("removes a .git left by prepare so the next instance's reset succeeds", async () => {
+    const cloneAdapter = (prompt: string): BenchAdapter => ({
+      name: "t",
+      datasetSplit: "x",
+      instances: () => [
+        {
+          id: "i1",
+          prompt,
+          seedFiles: {},
+          prepare: async (wsDir) => {
+            await mkdir(join(wsDir, ".git"));
+          },
+        },
+        {
+          id: "i2",
+          prompt,
+          seedFiles: {},
+          prepare: async (wsDir) => {
+            await mkdir(join(wsDir, ".git"));
+          },
+        },
+      ],
+    });
+    // Both a completed and an aborted turn must leave the workspace clean for the next reset.
+    for (const term of ["result", "aborted"] as const) {
+      const report = await runBenchmark({
+        adapter: cloneAdapter("p"),
+        client: fakeClient({ p: outcome({ terminal: term }) }),
+        scorer: stubScorer({ i1: { resolved: true }, i2: { resolved: true } }),
+        workspaceDir: ws,
+      });
+      // Neither instance is errored by a "refusing to wipe a git repository" reset failure.
+      expect(report.instances.every((i) => i.error === undefined)).toBe(true);
+      expect(await readdir(ws)).not.toContain(".git");
+    }
+  });
+
+  it("batch path: collects predictions for completed turns, scores once, folds verdicts", async () => {
+    const adapter: BenchAdapter = {
+      name: "swe",
+      datasetSplit: "lite-curated",
+      instances: () => [
+        { id: "i1", prompt: "p1", seedFiles: {} },
+        { id: "i2", prompt: "p2", seedFiles: {} },
+        { id: "i3", prompt: "p3", seedFiles: {} },
+      ],
+    };
+    const client = fakeClient({
+      p1: outcome({}),
+      p2: outcome({}),
+      p3: outcome({ terminal: "aborted" }),
+    });
+    let scored: Prediction[] | null = null;
+    const batchScorer: BatchScorer = {
+      async scoreAll(preds) {
+        scored = preds;
+        return new Map([
+          ["i1", { resolved: true }],
+          ["i2", { resolved: false, detail: "tests failed" }],
+        ]);
+      },
+    };
+    const report = await runBenchmark({
+      adapter,
+      client,
+      workspaceDir: ws,
+      batch: { scorer: batchScorer, collectPatch: async () => "DIFF", modelName: "cr" },
+    });
+    // Only the two completed turns produce predictions; the aborted one does not.
+    expect(scored?.map((p) => p.instance_id)).toEqual(["i1", "i2"]);
+    expect(scored?.every((p) => p.model_patch === "DIFF" && p.model_name_or_path === "cr")).toBe(
+      true,
+    );
+    expect(report.instances.map((i) => i.status)).toEqual(["resolved", "unresolved", "timeout"]);
+  });
+
+  it("batch path: a completed turn missing from the verdict map is errored", async () => {
+    const report = await runBenchmark({
+      adapter: oneInstanceAdapter("x", "p"),
+      client: fakeClient({ p: outcome({}) }),
+      workspaceDir: ws,
+      batch: {
+        scorer: {
+          async scoreAll() {
+            return new Map();
+          },
+        },
+        collectPatch: async () => "DIFF",
+        modelName: "cr",
+      },
+    });
+    expect(report.instances[0]?.status).toBe("errored");
+    expect(report.instances[0]?.error).toMatch(/missing/);
   });
 });
