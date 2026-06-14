@@ -2,8 +2,20 @@ import { describe, expect, it } from "vitest";
 import { type RunReport, RunReportSchema } from "../src/report/schema.js";
 
 const valid: RunReport = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   benchmark: "hello-bench",
+  config: {
+    benchmark: "hello-bench",
+    datasetSplit: "builtin",
+    subsetHash: "abc",
+    backendLabel: "test",
+    model: "m",
+    effort: "max",
+    maxTurns: 100,
+    promptScaffoldVersion: "1",
+    runtimeVersion: "0.0.0",
+    harnessVersion: "0.0.0",
+  },
   startedAt: 1,
   finishedAt: 2,
   summary: {
@@ -49,7 +61,12 @@ describe("RunReportSchema", () => {
   });
 
   it("rejects a wrong schemaVersion", () => {
-    const bad = { ...valid, schemaVersion: 2 };
+    const bad = { ...valid, schemaVersion: 1 };
     expect(() => RunReportSchema.parse(bad)).toThrow();
+  });
+
+  it("rejects a report missing the embedded config tuple", () => {
+    const { config: _omit, ...withoutConfig } = valid;
+    expect(() => RunReportSchema.parse(withoutConfig)).toThrow();
   });
 });

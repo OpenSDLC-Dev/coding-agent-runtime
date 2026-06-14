@@ -92,6 +92,40 @@ describe("createHttpClient.runTurn", () => {
   });
 });
 
+describe("createHttpClient.getConfig", () => {
+  it("parses GET /config into the recorded subset, ignoring extra fields", async () => {
+    const fetchImpl: FetchLike = async (input) => {
+      if (!input.endsWith("/config")) return new Response("nope", { status: 404 });
+      return new Response(
+        JSON.stringify({
+          defaultModel: "MiniMax-M3",
+          allowedModels: null,
+          jaegerBaseUrl: null,
+          version: "1.2.3",
+          includePartial: false,
+          effort: "high",
+          maxTurns: 42,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const cfg = await createHttpClient({ baseUrl: "http://rt", fetchImpl }).getConfig();
+    expect(cfg).toEqual({
+      defaultModel: "MiniMax-M3",
+      version: "1.2.3",
+      effort: "high",
+      maxTurns: 42,
+    });
+  });
+
+  it("throws on a non-2xx /config response", async () => {
+    const fetchImpl: FetchLike = async () => new Response("err", { status: 500 });
+    await expect(createHttpClient({ baseUrl: "http://rt", fetchImpl }).getConfig()).rejects.toThrow(
+      /HTTP 500/,
+    );
+  });
+});
+
 describe("createHttpClient.health", () => {
   it("returns true when /healthz is ok", async () => {
     const fetchImpl: FetchLike = async () => new Response("ok", { status: 200 });

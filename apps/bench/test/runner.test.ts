@@ -2,11 +2,22 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { RuntimeConfigResponse } from "../src/config-snapshot.js";
 import { runBenchmark } from "../src/runner.js";
 import { stubScorer } from "../src/scorer/stub.js";
 import type { BatchScorer, Prediction } from "../src/scorer/types.js";
 import type { RuntimeClient } from "../src/sse-client.js";
 import type { BenchAdapter, TurnOutcome } from "../src/types.js";
+import { makeSnapshot } from "./tracking-fixtures.js";
+
+// Every runBenchmark call needs a config tuple (embedded in the report) and the client a getConfig.
+const SNAP = makeSnapshot();
+const CFG: RuntimeConfigResponse = {
+  defaultModel: "test-model",
+  version: "0.0.0",
+  effort: "max",
+  maxTurns: 100,
+};
 
 function outcome(partial: Partial<TurnOutcome>): TurnOutcome {
   return {
@@ -26,6 +37,9 @@ function fakeClient(byPrompt: Record<string, TurnOutcome>): RuntimeClient {
   return {
     async health() {
       return true;
+    },
+    async getConfig() {
+      return CFG;
     },
     async runTurn({ prompt }) {
       return byPrompt[prompt] ?? outcome({});
@@ -82,10 +96,12 @@ describe("runBenchmark", () => {
       client,
       scorer,
       workspaceDir: ws,
+      config: SNAP,
       now,
     });
 
-    expect(report.schemaVersion).toBe(1);
+    expect(report.schemaVersion).toBe(2);
+    expect(report.config).toEqual(SNAP); // the run's config tuple is embedded verbatim
     expect(report.benchmark).toBe("test-bench");
     expect(report.instances.map((i) => i.status)).toEqual(["resolved", "unresolved", "timeout"]);
     expect(report.summary.total).toBe(3);
@@ -103,6 +119,9 @@ describe("runBenchmark", () => {
       async health() {
         return true;
       },
+      async getConfig() {
+        return CFG;
+      },
       async runTurn() {
         throw new Error("connection refused");
       },
@@ -112,6 +131,7 @@ describe("runBenchmark", () => {
       client,
       scorer: stubScorer({}),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(report.instances[0]?.status).toBe("errored");
     expect(report.instances[0]?.error).toMatch(/connection refused/);
@@ -124,6 +144,7 @@ describe("runBenchmark", () => {
       client,
       scorer: stubScorer({ x: { resolved: true } }),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(report.instances[0]?.status).toBe("errored");
   });
@@ -134,6 +155,7 @@ describe("runBenchmark", () => {
         adapter: oneInstanceAdapter("x", "p"),
         client: fakeClient({}),
         workspaceDir: ws,
+        config: SNAP,
       }),
     ).rejects.toThrow(/exactly one/);
   });
@@ -156,6 +178,7 @@ describe("runBenchmark", () => {
       client: fakeClient({ p: outcome({}) }),
       scorer: stubScorer({ i: { resolved: true } }),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(report.instances[0]?.status).toBe("resolved");
   });
@@ -182,6 +205,9 @@ describe("runBenchmark", () => {
       async health() {
         return true;
       },
+      async getConfig() {
+        return CFG;
+      },
       async runTurn() {
         order.push("turn");
         // seedFiles ran before the turn.
@@ -194,6 +220,7 @@ describe("runBenchmark", () => {
       client,
       scorer: stubScorer({ i: { resolved: true } }),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(order).toEqual(["prepare", "turn"]);
   });
@@ -219,6 +246,7 @@ describe("runBenchmark", () => {
       client: fakeClient({ p2: outcome({}) }),
       scorer: stubScorer({ ok: { resolved: true } }),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(report.instances[0]?.status).toBe("errored");
     expect(report.instances[0]?.error).toMatch(/clone failed/);
@@ -255,6 +283,7 @@ describe("runBenchmark", () => {
         client: fakeClient({ p: outcome({ terminal: term }) }),
         scorer: stubScorer({ i1: { resolved: true }, i2: { resolved: true } }),
         workspaceDir: ws,
+        config: SNAP,
       });
       // Neither instance is errored by a "refusing to wipe a git repository" reset failure.
       expect(report.instances.every((i) => i.error === undefined)).toBe(true);
@@ -291,6 +320,7 @@ describe("runBenchmark", () => {
       adapter,
       client,
       workspaceDir: ws,
+      config: SNAP,
       batch: { scorer: batchScorer, collectPatch: async () => "DIFF", modelName: "cr" },
     });
     // Only the two completed turns produce predictions; the aborted one does not.
@@ -306,6 +336,7 @@ describe("runBenchmark", () => {
       adapter: oneInstanceAdapter("x", "p"),
       client: fakeClient({ p: outcome({}) }),
       workspaceDir: ws,
+      config: SNAP,
       batch: {
         scorer: {
           async scoreAll() {
@@ -325,6 +356,7 @@ describe("runBenchmark", () => {
       adapter: oneInstanceAdapter("x", "p"),
       client: fakeClient({ p: outcome({ numTurns: 3, costUsd: 0.02 }) }),
       workspaceDir: ws,
+      config: SNAP,
       batch: {
         scorer: {
           async scoreAll() {
@@ -365,6 +397,7 @@ describe("runBenchmark", () => {
       adapter,
       client: fakeClient({ p: outcome({ terminal: "aborted" }) }),
       workspaceDir: ws,
+      config: SNAP,
       batch: {
         scorer: {
           async scoreAll() {
@@ -402,6 +435,9 @@ describe("runBenchmark", () => {
       async health() {
         return true;
       },
+      async getConfig() {
+        return CFG;
+      },
       async runTurn() {
         throw new Error("boom");
       },
@@ -411,6 +447,7 @@ describe("runBenchmark", () => {
       client,
       scorer: stubScorer({}),
       workspaceDir: ws,
+      config: SNAP,
     });
     expect(report.instances.map((i) => i.status)).toEqual(["errored", "errored"]);
     expect(await readdir(ws)).not.toContain(".git");

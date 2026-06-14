@@ -8,6 +8,11 @@
 //   node scripts/bench.mjs --benchmark hello-bench --workspace /path/to/RUNTIME_CWD --out report.json
 //   node scripts/bench.mjs --benchmark swe-bench   --dataset swe-bench-lite.json --out report.json
 //
+// Baseline / regression tracking (both benchmarks; see docs/benchmarks.md):
+//   node scripts/bench.mjs --benchmark hello-bench --backend-label minimax-m3 --accept --emit-markdown
+//   node scripts/bench.mjs --benchmark hello-bench --backend-label minimax-m3 --compare --update-history
+//   node scripts/bench.mjs emit-markdown      # regenerate BENCHMARKS.md from committed baselines (no runtime)
+//
 // WARNING: --workspace (default ./.bench-workspace, or RUNTIME_CWD) is emptied between instances.
 // Point it at a dedicated directory that mirrors the runtime's RUNTIME_CWD — never a repo checkout
 // (a .git entry is refused as a safety net). The runtime under test holds the API key/backend

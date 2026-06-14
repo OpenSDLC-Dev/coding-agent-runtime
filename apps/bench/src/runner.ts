@@ -9,6 +9,7 @@
 //     whole run's predictions in one shot. So we collect a Prediction per completed turn, score them
 //     all once after the loop, and fold the per-instance verdicts back in.
 
+import type { ConfigSnapshot } from "./config-snapshot.js";
 import {
   type InstanceResult,
   type InstanceStatus,
@@ -33,6 +34,8 @@ export interface RunOptions {
   adapter: BenchAdapter;
   client: RuntimeClient;
   workspaceDir: string;
+  /** The run's config tuple, embedded verbatim in the report so the artifact is self-describing. */
+  config: ConfigSnapshot;
   /** Per-instance scorer (hello-bench). Exactly one of `scorer` / `batch` must be set. */
   scorer?: Scorer;
   /** Batch scorer (SWE-bench). Exactly one of `scorer` / `batch` must be set. */
@@ -72,6 +75,7 @@ async function classify(
 
 function buildReport(
   benchmark: string,
+  config: ConfigSnapshot,
   startedAt: number,
   finishedAt: number,
   instances: InstanceResult[],
@@ -85,8 +89,9 @@ function buildReport(
   const sum = (sel: (i: InstanceResult) => number): number =>
     instances.reduce((acc, i) => acc + sel(i), 0);
   const report: RunReport = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     benchmark,
+    config,
     startedAt,
     finishedAt,
     summary: {
@@ -204,5 +209,5 @@ export async function runBenchmark(opts: RunOptions): Promise<RunReport> {
     }
   }
 
-  return buildReport(opts.adapter.name, startedAt, now(), results);
+  return buildReport(opts.adapter.name, opts.config, startedAt, now(), results);
 }
