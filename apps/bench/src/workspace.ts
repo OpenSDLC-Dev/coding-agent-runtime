@@ -21,6 +21,11 @@ export async function resetWorkspace(dir: string): Promise<void> {
   assertSafeWorkspace(dir);
   await mkdir(dir, { recursive: true });
   const entries = await readdir(dir);
+  // Last-line safety net: never wipe what looks like a git repository root. A misconfigured
+  // --workspace / RUNTIME_CWD pointing at a checkout would otherwise lose uncommitted work.
+  if (entries.includes(".git")) {
+    throw new Error(`refusing to wipe a directory that looks like a git repository root: ${dir}`);
+  }
   await Promise.all(entries.map((e) => rm(join(dir, e), { recursive: true, force: true })));
 }
 

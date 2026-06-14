@@ -7,7 +7,10 @@
 //   node scripts/bench.mjs --benchmark hello-bench --base-url http://127.0.0.1:8080
 //   node scripts/bench.mjs --benchmark hello-bench --workspace /path/to/RUNTIME_CWD --out report.json
 //
-// The runtime under test holds the API key/backend config; this script never needs them.
+// WARNING: --workspace (default ./.bench-workspace, or RUNTIME_CWD) is emptied between instances.
+// Point it at a dedicated directory that mirrors the runtime's RUNTIME_CWD — never a repo checkout
+// (a .git entry is refused as a safety net). The runtime under test holds the API key/backend
+// config; this script never needs them.
 
 import { spawn } from "node:child_process";
 

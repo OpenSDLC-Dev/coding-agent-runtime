@@ -95,8 +95,9 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
   }
 }
 
-// Reduce a turn's SSE stream into a TurnOutcome by tracking the init sessionId/traceId and the
-// terminal event (result / error / aborted) with its usage and cost.
+// Reduce a turn's SSE stream into a TurnOutcome: capture sessionId/traceId from any frame that
+// carries them (the init frame supplies both; later frames never clobber a captured string), and
+// record the terminal event (result / error / aborted) with its usage and cost.
 async function reduceOutcome(stream: ReadableStream<Uint8Array>): Promise<TurnOutcome> {
   const outcome: TurnOutcome = {
     sessionId: null,

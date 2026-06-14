@@ -11,7 +11,8 @@ import type { BenchAdapter, BenchInstance } from "../../types.js";
 let importCounter = 0;
 
 // Import a workspace module fresh: a unique query string defeats the ESM module cache so a re-import
-// reflects the agent's edits rather than a previously loaded version.
+// reflects the agent's edits rather than a previously loaded version. Each distinct URL stays in the
+// module registry for the process lifetime — negligible for hello-bench's handful of instances.
 async function importFresh(file: string): Promise<Record<string, unknown>> {
   importCounter += 1;
   const url = `${pathToFileURL(file).href}?v=${importCounter}`;
