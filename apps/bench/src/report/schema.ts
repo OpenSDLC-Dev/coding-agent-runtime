@@ -1,9 +1,11 @@
 // The run-report schema is the versioned, validated output of a benchmark run. Following the
 // runtime's convention, zod is the single source of truth: the runner validates on the way out so a
-// malformed report fails loudly rather than producing a misleading number. The config tuple
-// (model backend / effort / scaffold version) is intentionally deferred to a later milestone.
+// malformed report fails loudly rather than producing a misleading number. Every report embeds the
+// `config` tuple that produced it (see config-snapshot.ts), so the artifact is self-describing and the
+// baseline/regression machinery can key off it.
 
 import { z } from "zod";
+import { ConfigSnapshotSchema } from "../config-snapshot.js";
 
 export const InstanceStatus = z.enum(["resolved", "unresolved", "errored", "timeout"]);
 export type InstanceStatus = z.infer<typeof InstanceStatus>;
@@ -37,8 +39,11 @@ export const RunSummarySchema = z.object({
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
 export const RunReportSchema = z.object({
-  schemaVersion: z.literal(1),
+  // v2 adds the embedded `config` tuple. v1 reports (no config) intentionally fail to parse — the
+  // benchmark subsystem is unreleased, so there are no v1 artifacts to keep readable.
+  schemaVersion: z.literal(2),
   benchmark: z.string(),
+  config: ConfigSnapshotSchema,
   startedAt: z.number(),
   finishedAt: z.number(),
   summary: RunSummarySchema,

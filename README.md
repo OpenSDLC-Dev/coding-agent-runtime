@@ -170,7 +170,9 @@ Two authoring tiers:
 - **`hello-bench`** — three in-repo toy tasks, scored locally, zero external setup: `node scripts/bench.mjs --benchmark hello-bench` against a running runtime.
 - **`swe-bench`** — the SWE-bench Lite curated subset. Each instance checks out its repo at the base commit (a shallow fetch by SHA), drives a turn, and the run's predictions are scored by the official `swebench` Docker harness; the repo commits only the curated instance-id list, not issue text or gold patches.
 
-See [`docs/benchmarks.md`](docs/benchmarks.md) for the SWE-bench prerequisites (git, a downloaded dataset file, python + Docker + `swebench`), the run flags, and how to read the report. The harness's own vitest suite runs in `pnpm verify` with no model, Docker, or network.
+Each run snapshots the **config tuple** that produced it (benchmark, subset, backend label, model, effort, max-turns, prompt-scaffold version) and embeds it in the report. That tuple's identity subset is a **baseline key**: `--accept` commits a run as the baseline for its key, `--compare` fails (non-zero exit) when a later run drops below it, and `--update-history` appends to a per-key JSONL trail. [`BENCHMARKS.md`](BENCHMARKS.md) is generated from the committed baselines (`node scripts/bench.mjs emit-markdown`).
+
+See [`docs/benchmarks.md`](docs/benchmarks.md) for the SWE-bench prerequisites (git, a downloaded dataset file, python + Docker + `swebench`), the run flags, baseline/regression tracking, and how to read the report. The harness's own vitest suite runs in `pnpm verify` with no model, Docker, or network.
 
 ## Observability
 

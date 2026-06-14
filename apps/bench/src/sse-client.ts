@@ -5,12 +5,15 @@
 // `fetch` is injectable (FetchLike) so tests can replay recorded SSE fixtures without a live runtime,
 // mirroring how runTurn injects a fake QueryFn in the runtime's own tests.
 
+import { type RuntimeConfigResponse, RuntimeConfigResponseSchema } from "./config-snapshot.js";
 import type { TurnOutcome } from "./types.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface RuntimeClient {
   health(): Promise<boolean>;
+  /** Read GET /config so a run can snapshot the runtime's config tuple authoritatively. */
+  getConfig(): Promise<RuntimeConfigResponse>;
   runTurn(input: { prompt: string; model?: string }): Promise<TurnOutcome>;
 }
 
@@ -156,6 +159,12 @@ export function createHttpClient(opts: HttpClientOptions): RuntimeClient {
     }
   }
 
+  async function getConfig(): Promise<RuntimeConfigResponse> {
+    const res = await fetchImpl(`${baseUrl}/config`);
+    if (!res.ok) throw new Error(`GET /config returned HTTP ${res.status}`);
+    return RuntimeConfigResponseSchema.parse(await res.json());
+  }
+
   async function runTurn(input: { prompt: string; model?: string }): Promise<TurnOutcome> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), turnTimeoutMs);
@@ -178,5 +187,5 @@ export function createHttpClient(opts: HttpClientOptions): RuntimeClient {
     }
   }
 
-  return { health, runTurn };
+  return { health, getConfig, runTurn };
 }

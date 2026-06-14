@@ -108,6 +108,63 @@ The harness prints `resolved/total (rate), turns, $cost` and (with `--out`) writ
 - `errored` is a turn that did not complete, a grader error, or an instance missing from the report;
   `timeout` is an aborted turn. Both fold into the summary's `errored` bucket.
 
+## Baseline & regression tracking
+
+A benchmark number is only meaningful next to the configuration that produced it. So every run snapshots
+a **config tuple** and embeds it in the report:
+
+| Field | Source | In the baseline key? |
+| ----- | ------ | -------------------- |
+| `benchmark`, `datasetSplit` | the adapter | yes |
+| `subsetHash` | hash of the instance ids actually run | yes |
+| `backendLabel` | `--backend-label` (you name the backend) | yes |
+| `model` | `--model`, else the runtime's `defaultModel` | yes |
+| `effort`, `maxTurns` | the runtime's `GET /config` (authoritative) | yes |
+| `promptScaffoldVersion` | a harness constant, bumped when prompts change | yes |
+| `runtimeVersion`, `harnessVersion` | `/config` version + `@app/bench` version | **no** (provenance only) |
+
+The identity subset (everything except the two versions) is hashed into a **baseline key** like
+`minimax-m3-swe-bench-<hash>`. Excluding the runtime/harness versions is deliberate: a newer runtime is
+compared against the *same* baseline, which is what makes the comparison a cross-version regression
+check. Changing the model, effort, subset, backend, or scaffold forks a fresh key — you are no longer
+measuring the same thing.
+
+The model-backend URL is never read (the runtime does not expose it); name the backend yourself with
+`--backend-label <name>` so two deployments behind the same host but different models do not collide.
+
+### Tracking flags (both benchmarks)
+
+| Flag | Effect |
+| ---- | ------ |
+| `--backend-label <name>` | names the model backend in the config tuple (default `unknown`; also `BENCH_BACKEND_LABEL`) |
+| `--accept` | commit this run as the baseline for its key (`apps/bench/baselines/<key>.json`) — the **only** way a baseline is written, never automatic |
+| `--compare` | compare this run against the committed baseline; **exit non-zero** if the resolve rate dropped |
+| `--update-history` | append this run to `apps/bench/history/<key>.jsonl` (an out-of-band trend trail) |
+| `--emit-markdown` | regenerate `BENCHMARKS.md` from the committed baselines after the run |
+| `--baseline-dir` / `--history-dir` | override the committed dirs (default under `apps/bench/`) |
+
+`BENCHMARKS.md` can also be regenerated on its own, without a runtime:
+
+```
+node scripts/bench.mjs emit-markdown
+```
+
+### A typical flow
+
+```
+# 1. First run on a new config -> "new" verdict, nothing to compare against. Accept it as the baseline.
+node scripts/bench.mjs --benchmark hello-bench --backend-label minimax-m3 --accept --emit-markdown
+
+# 2. Later, after a runtime change -> gate against the committed baseline (CI-friendly: non-zero on regress).
+node scripts/bench.mjs --benchmark hello-bench --backend-label minimax-m3 --compare --update-history
+
+# 3. When an improvement is real and reviewed, re-accept to move the bar up.
+node scripts/bench.mjs --benchmark hello-bench --backend-label minimax-m3 --accept --emit-markdown
+```
+
+A baseline is committed to git, so a regression shows up as a failed `--compare` in review, and moving the
+bar is an explicit, reviewable `--accept` commit — never silent.
+
 ## Behind a slow or blocked Docker Hub / PyPI / HuggingFace
 
 The grader's Docker images are the heavy part. The often-quoted ~120 GB is for a **full** 300-instance
@@ -124,10 +181,12 @@ of GB). If your network to these registries is slow:
 
 ## Scope and roadmap
 
-E1 ships the SWE-bench adapter + the offline Docker scorer. Deliberately deferred:
+E1 shipped the SWE-bench adapter + the offline Docker scorer; E2 added the config-tuple baseline,
+regression gate (`--compare`), per-key history, and the generated `BENCHMARKS.md`. Deliberately deferred:
 
 - The **hosted `sb-cli` scorer** (no local Docker) — planned, gated on one real submission to confirm
   its report exposes per-instance ids (the public client only documents aggregate counts).
-- A **config-tuple baseline + regression tracking** (the next milestone) — committed baselines keyed by
-  the run's config, a `compare` regression gate, and a generated `BENCHMARKS.md`.
+- **Scheduled / PR-gated CI automation** for benchmark runs — the offline tracking machinery is in
+  place, but wiring it into a scheduled or secret-gated CI job is left until real runs are routine (such
+  a job downloads the model/Docker dependencies a unit-test CI deliberately avoids).
 - **Parallel multi-container sharding**, SWE-bench Verified, and Aider Polyglot.
