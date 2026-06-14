@@ -181,14 +181,25 @@ export async function runBenchmark(opts: RunOptions): Promise<RunReport> {
   }
 
   if (opts.batch) {
-    const verdicts = await opts.batch.scorer.scoreAll(predictions);
-    for (const [id, result] of pending) {
-      const verdict = verdicts.get(id);
-      if (!verdict || verdict.errored) {
+    try {
+      const verdicts = await opts.batch.scorer.scoreAll(predictions);
+      for (const [id, result] of pending) {
+        const verdict = verdicts.get(id);
+        if (!verdict || verdict.errored) {
+          result.status = "errored";
+          result.error = verdict?.detail ?? "instance missing from scorer report";
+        } else {
+          result.status = verdict.resolved ? "resolved" : "unresolved";
+        }
+      }
+    } catch (err) {
+      // A whole-run grader failure (e.g. the report never landed) must not throw away the turn data we
+      // already paid for: mark the scored-pending instances errored and still build the report. The
+      // predictions file the scorer wrote survives, so scoring can be re-run against it out of band.
+      const message = err instanceof Error ? err.message : String(err);
+      for (const result of pending.values()) {
         result.status = "errored";
-        result.error = verdict?.detail ?? "instance missing from scorer report";
-      } else {
-        result.status = verdict.resolved ? "resolved" : "unresolved";
+        result.error = `batch scoring failed: ${message}`;
       }
     }
   }

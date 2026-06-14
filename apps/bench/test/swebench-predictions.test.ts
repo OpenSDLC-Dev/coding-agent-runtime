@@ -9,7 +9,7 @@ import {
 } from "../src/adapters/swebench/predictions.js";
 
 describe("swebench predictions", () => {
-  it("collectModelPatch runs `git add -A` then `git diff --cached` and returns the diff", async () => {
+  it("collectModelPatch stages all, then diffs the index against the pinned base ref", async () => {
     const calls: Array<{ file: string; args: string[]; cwd: string }> = [];
     const exec: Exec = async (file, args, cwd) => {
       calls.push({ file, args, cwd });
@@ -19,7 +19,8 @@ describe("swebench predictions", () => {
     expect(patch).toBe("THE-PATCH");
     expect(calls).toEqual([
       { file: "git", args: ["add", "-A"], cwd: "/ws" },
-      { file: "git", args: ["diff", "--cached"], cwd: "/ws" },
+      // Diff against the base ref (not HEAD) so a fix the agent committed is still captured.
+      { file: "git", args: ["diff", "--cached", "refs/bench/base"], cwd: "/ws" },
     ]);
   });
 

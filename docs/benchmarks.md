@@ -26,8 +26,8 @@ apps/bench/subsets/swebench-lite-curated.json   (committed: instance ids only)
   + the operator-downloaded dataset file         (--dataset / RUNTIME_SWEBENCH_DATASET: full records)
        └─ adapter.load(): select the curated subset → BenchInstance[]
   per instance (sequential):
-       resetWorkspace → prepare(): git clone <repo> @ <base_commit> into the workspace
-         → drive one turn (POST /sessions) → collect `git diff` = model_patch
+       resetWorkspace → prepare(): shallow-fetch <repo> @ <base_commit> by SHA into the workspace
+         → drive one turn (POST /sessions) → collect `git diff` (vs the pinned base) = model_patch
          → remove .git (so the next reset's repo-guard is clean)
   after the loop (batch, once):
        write predictions.json → python -m swebench.harness.run_evaluation
@@ -65,10 +65,12 @@ ds = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
 json.dump(list(ds), open("swe-bench-lite.json", "w"))
 ```
 
-Point the harness at it with `--dataset swe-bench-lite.json` (or `RUNTIME_SWEBENCH_DATASET`). The same
-file is passed to the grader via `--dataset-name`, so it also supplies `FAIL_TO_PASS`/`test_patch` at
-scoring time. (You can also pass a HuggingFace id directly as `--dataset-name`, but `--dataset` must be
-a local file because the adapter reads it to build the prompts.)
+Point the harness at it with `--dataset swe-bench-lite.json` (or `RUNTIME_SWEBENCH_DATASET`); the
+adapter reads it to build the prompts. By default the grader scores against the **same file**
+(`--dataset-name` defaults to your `--dataset`), so the agent and the grader see identical records,
+including `FAIL_TO_PASS`/`test_patch` at scoring time. Override `--dataset-name` with a HuggingFace id
+(e.g. `princeton-nlp/SWE-bench_Lite`) only if you want the grader to load from HF instead — make sure
+it is the same revision as your local file, or the agent and grader will disagree on the records.
 
 ## Run it
 
@@ -88,11 +90,11 @@ node scripts/bench.mjs \
 | ---------------- | ------------------------------------ | ------------------------------------------------------------- |
 | `--dataset`      | `RUNTIME_SWEBENCH_DATASET`           | local dataset file (required for `swe-bench`)                  |
 | `--subset`       | `apps/bench/subsets/swebench-lite-curated.json` | curated instance-id list                            |
-| `--dataset-name` | `princeton-nlp/SWE-bench_Lite`       | passed to the grader (`--dataset_name`)                       |
+| `--dataset-name` | same as `--dataset`                  | what the grader loads (`--dataset_name`); a local file or a HF id |
 | `--split`        | (unset)                              | forwarded to the grader as `--split`                          |
 | `--run-id`       | `swe-bench-<timestamp>`              | names the run + grader log dir (safe charset only)            |
-| `--report-dir`   | `./.bench-reports`                   | where `predictions.json` + the grader report are written      |
-| `--model-name`   | the `--model` value, else `coding-agent-runtime` | `model_name_or_path` in predictions + report filename |
+| `--report-dir`   | `./.bench-reports`                   | the grader's working dir; `predictions.json`, its report, and its `logs/` land here |
+| `--model-name`   | the `--model` value, else `coding-agent-runtime` | `model_name_or_path` in predictions + report filename (safe charset) |
 | `--out`          | (none)                               | write the final `RunReport` JSON here                         |
 
 ## Reading the report

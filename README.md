@@ -168,7 +168,7 @@ Two authoring tiers:
 `apps/bench` (the `@app/bench` package) measures the runtime's coding ability against standard benchmarks. It is an **external orchestrator** — it drives the runtime as a black box over the public HTTP/SSE contract and scores **out-of-band** — not an extension, so it never touches the runtime core or its security perimeter.
 
 - **`hello-bench`** — three in-repo toy tasks, scored locally, zero external setup: `node scripts/bench.mjs --benchmark hello-bench` against a running runtime.
-- **`swe-bench`** — the SWE-bench Lite curated subset. Each instance clones its repo at the base commit, drives a turn, and the run's predictions are scored by the official `swebench` Docker harness; the repo commits only the curated instance-id list, not issue text or gold patches.
+- **`swe-bench`** — the SWE-bench Lite curated subset. Each instance checks out its repo at the base commit (a shallow fetch by SHA), drives a turn, and the run's predictions are scored by the official `swebench` Docker harness; the repo commits only the curated instance-id list, not issue text or gold patches.
 
 See [`docs/benchmarks.md`](docs/benchmarks.md) for the SWE-bench prerequisites (git, a downloaded dataset file, python + Docker + `swebench`), the run flags, and how to read the report. The harness's own vitest suite runs in `pnpm verify` with no model, Docker, or network.
 

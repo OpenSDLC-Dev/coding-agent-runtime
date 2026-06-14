@@ -14,8 +14,14 @@ import { z } from "zod";
 export const SweInstanceSchema = z.object({
   // owner__repo-PR (e.g. astropy__astropy-12907); used verbatim as the prediction + report key.
   instance_id: z.string().regex(/^[A-Za-z0-9._-]+$/, "instance_id has unexpected characters"),
-  // owner/name (e.g. django/django); interpolated into the clone URL, so keep it to a safe charset.
-  repo: z.string().regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/, "repo must be owner/name"),
+  // owner/name (e.g. django/django); interpolated into the clone URL. No segment may start with "-"
+  // (a flag-shaped value reaching git), matching real GitHub owner/name rules.
+  repo: z
+    .string()
+    .regex(
+      /^[A-Za-z0-9._][A-Za-z0-9._-]*\/[A-Za-z0-9._][A-Za-z0-9._-]*$/,
+      "repo must be owner/name",
+    ),
   // a 40-char lowercase-hex commit SHA; checked out as a git argument.
   base_commit: z.string().regex(/^[0-9a-f]{40}$/, "base_commit must be a 40-char hex sha"),
   problem_statement: z.string().min(1),

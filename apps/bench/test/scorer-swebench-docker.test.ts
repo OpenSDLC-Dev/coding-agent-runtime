@@ -133,4 +133,16 @@ describe("createSwebenchDockerScorer", () => {
       }),
     ).toThrow(/run_id/);
   });
+
+  it("rejects an unsafe model name at construction (it becomes a filename)", () => {
+    expect(() =>
+      createSwebenchDockerScorer({
+        datasetName: "d",
+        runId: "r",
+        predictionsPath: "p",
+        reportDir: dir,
+        modelName: "..\\escape",
+      }),
+    ).toThrow(/model name/);
+  });
 });

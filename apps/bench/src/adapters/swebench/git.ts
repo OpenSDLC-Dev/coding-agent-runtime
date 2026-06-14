@@ -9,10 +9,17 @@ import { run } from "../../exec.js";
 
 export type GitClone = (repo: string, baseCommit: string, workspaceDir: string) => Promise<void>;
 
+// A fixed ref pinned at the base commit. The prediction is diffed against THIS ref, not HEAD, so the
+// patch is captured even if the agent commits its work during the turn (`git` is in the runtime's Bash
+// allowlist, so `git commit` is allowed). A ref outside refs/heads is unlikely to be touched by the
+// agent's own git usage.
+export const BASE_REF = "refs/bench/base";
+
 export const defaultGitClone: GitClone = async (repo, baseCommit, workspaceDir) => {
   const url = `https://github.com/${repo}.git`;
   await run("git", ["init", "-q"], workspaceDir);
   await run("git", ["remote", "add", "origin", url], workspaceDir);
   await run("git", ["fetch", "-q", "--depth", "1", "origin", baseCommit], workspaceDir);
   await run("git", ["checkout", "-q", baseCommit], workspaceDir);
+  await run("git", ["update-ref", BASE_REF, baseCommit], workspaceDir);
 };

@@ -23,7 +23,12 @@ export interface SweBenchConfig {
   datasetSplit: string;
 }
 
-const SubsetSchema = z.array(z.string().min(1)).min(1);
+// A non-empty list of unique instance ids. Duplicates are rejected (not silently kept) so a malformed
+// curated list fails loudly at load, the same way a missing id does — rather than skewing the run.
+const SubsetSchema = z
+  .array(z.string().min(1))
+  .min(1)
+  .refine((ids) => new Set(ids).size === ids.length, "curated subset has duplicate instance ids");
 
 export function createSweBenchAdapter(
   cfg: SweBenchConfig,

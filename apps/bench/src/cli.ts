@@ -49,6 +49,7 @@ function parseArgs(argv: string[]): CliArgs {
     return i !== -1 ? argv[i + 1] : undefined;
   };
   const model = get("model") ?? process.env.RUNTIME_DEFAULT_MODEL;
+  const dataset = get("dataset") ?? process.env.RUNTIME_SWEBENCH_DATASET;
   return {
     benchmark: get("benchmark") ?? "hello-bench",
     baseUrl: (get("base-url") ?? process.env.BASE_URL ?? "http://127.0.0.1:8080").replace(
@@ -58,9 +59,11 @@ function parseArgs(argv: string[]): CliArgs {
     workspace: resolve(get("workspace") ?? process.env.RUNTIME_CWD ?? "./.bench-workspace"),
     model,
     out: get("out"),
-    dataset: get("dataset") ?? process.env.RUNTIME_SWEBENCH_DATASET,
+    dataset,
     subset: resolve(get("subset") ?? DEFAULT_SUBSET),
-    datasetName: get("dataset-name") ?? "princeton-nlp/SWE-bench_Lite",
+    // Default the grader's --dataset_name to the SAME local file the adapter prompts from, so it scores
+    // against the exact records the agent saw. Override with --dataset-name (e.g. a HuggingFace id).
+    datasetName: get("dataset-name") ?? dataset ?? "princeton-nlp/SWE-bench_Lite",
     split: get("split"),
     runId: get("run-id") ?? `swe-bench-${Date.now()}`,
     reportDir: resolve(get("report-dir") ?? "./.bench-reports"),

@@ -319,4 +319,100 @@ describe("runBenchmark", () => {
     expect(report.instances[0]?.status).toBe("errored");
     expect(report.instances[0]?.error).toMatch(/missing/);
   });
+
+  it("batch path: a grader failure errors pending instances but still builds a report with turn data", async () => {
+    const report = await runBenchmark({
+      adapter: oneInstanceAdapter("x", "p"),
+      client: fakeClient({ p: outcome({ numTurns: 3, costUsd: 0.02 }) }),
+      workspaceDir: ws,
+      batch: {
+        scorer: {
+          async scoreAll() {
+            throw new Error("report not found");
+          },
+        },
+        collectPatch: async () => "DIFF",
+        modelName: "cr",
+      },
+    });
+    expect(report.instances[0]?.status).toBe("errored");
+    expect(report.instances[0]?.error).toMatch(/batch scoring failed: report not found/);
+    // The paid turn data is preserved, not discarded.
+    expect(report.instances[0]?.turns).toBe(3);
+    expect(report.summary.totalCostUsd).toBeCloseTo(0.02);
+  });
+
+  it("batch path: removes a .git left by prepare even when the turn aborts", async () => {
+    const adapter: BenchAdapter = {
+      name: "swe",
+      datasetSplit: "x",
+      instances: () => [
+        {
+          id: "i1",
+          prompt: "p",
+          seedFiles: {},
+          prepare: (w) => mkdir(join(w, ".git")).then(() => {}),
+        },
+        {
+          id: "i2",
+          prompt: "p",
+          seedFiles: {},
+          prepare: (w) => mkdir(join(w, ".git")).then(() => {}),
+        },
+      ],
+    };
+    const report = await runBenchmark({
+      adapter,
+      client: fakeClient({ p: outcome({ terminal: "aborted" }) }),
+      workspaceDir: ws,
+      batch: {
+        scorer: {
+          async scoreAll() {
+            return new Map();
+          },
+        },
+        collectPatch: async () => "DIFF",
+        modelName: "cr",
+      },
+    });
+    expect(report.instances.map((i) => i.status)).toEqual(["timeout", "timeout"]);
+    expect(await readdir(ws)).not.toContain(".git");
+  });
+
+  it("removes a .git left by prepare even when the turn throws", async () => {
+    const adapter: BenchAdapter = {
+      name: "t",
+      datasetSplit: "x",
+      instances: () => [
+        {
+          id: "i1",
+          prompt: "p",
+          seedFiles: {},
+          prepare: (w) => mkdir(join(w, ".git")).then(() => {}),
+        },
+        {
+          id: "i2",
+          prompt: "p",
+          seedFiles: {},
+          prepare: (w) => mkdir(join(w, ".git")).then(() => {}),
+        },
+      ],
+    };
+    const client: RuntimeClient = {
+      async health() {
+        return true;
+      },
+      async runTurn() {
+        throw new Error("boom");
+      },
+    };
+    const report = await runBenchmark({
+      adapter,
+      client,
+      scorer: stubScorer({}),
+      workspaceDir: ws,
+    });
+    expect(report.instances.map((i) => i.status)).toEqual(["errored", "errored"]);
+    expect(await readdir(ws)).not.toContain(".git");
+  });
 });

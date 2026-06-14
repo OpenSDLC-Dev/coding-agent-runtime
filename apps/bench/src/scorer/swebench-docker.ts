@@ -57,7 +57,11 @@ export function verdictFor(report: SwebenchDockerReport, instanceId: string): Ba
   return { resolved: false, errored: true, detail: "instance missing from report" };
 }
 
+// runId and modelName both end up in the report filename `<model>.<run_id>.json`, so both are
+// constrained to a charset that cannot contain a path separator or "..". modelName additionally
+// permits "/" (org/model form), which is normalized to "__" exactly as the harness does.
 const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
+const MODEL_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export interface SwebenchDockerOptions {
   /** HuggingFace id or local dataset path passed to --dataset_name (the grader loads tests from it). */
@@ -66,9 +70,13 @@ export interface SwebenchDockerOptions {
   runId: string;
   /** Where we write the predictions JSON the harness reads. */
   predictionsPath: string;
-  /** --report_dir: where the harness writes <model>.<run_id>.json. */
+  /** Working directory for the grader. The harness writes its summary report and logs/ tree relative
+   *  to its CWD (the --report_dir flag does not relocate the summary report), so this is where we then
+   *  read <model>.<run_id>.json from. */
   reportDir: string;
-  /** model_name_or_path embedded in predictions; also the report-filename stem (slashes -> "__"). */
+  /** model_name_or_path embedded in predictions; also the report-filename stem (slashes -> "__"). MUST
+   *  equal the modelName stamped on the predictions (BatchConfig.modelName) or the computed report
+   *  filename will not match what the harness wrote. */
   modelName: string;
   /** Optional dataset split forwarded as --split. */
   split?: string;
@@ -83,6 +91,9 @@ const defaultRunEval = async (args: string[], cwd: string): Promise<void> => {
 export function createSwebenchDockerScorer(opts: SwebenchDockerOptions): BatchScorer {
   if (!RUN_ID_PATTERN.test(opts.runId)) {
     throw new Error(`run_id has unexpected characters: ${JSON.stringify(opts.runId)}`);
+  }
+  if (!MODEL_NAME_PATTERN.test(opts.modelName)) {
+    throw new Error(`model name has unexpected characters: ${JSON.stringify(opts.modelName)}`);
   }
   const runEval = opts.runEval ?? defaultRunEval;
 

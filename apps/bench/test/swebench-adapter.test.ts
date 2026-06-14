@@ -59,4 +59,13 @@ describe("swe-bench adapter", () => {
     );
     expect(() => adapter.instances()).toThrow(/before load/);
   });
+
+  it("rejects a curated subset with duplicate ids", async () => {
+    await writeFile(subsetFile, JSON.stringify(["acme__widget-101", "acme__widget-101"]), "utf8");
+    const adapter = createSweBenchAdapter(
+      { datasetFile, subsetFile, datasetSplit: "lite-curated" },
+      { gitClone: async () => {} },
+    );
+    await expect(adapter.load?.()).rejects.toThrow(/duplicate/);
+  });
 });
