@@ -5,6 +5,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "../agent/config.js";
 import { BUILTIN_EXTENSIONS } from "./builtin.js";
+import { loadManifestFile } from "./declarative.js";
 import type { Extension, ExtensionContributions } from "./types.js";
 
 /**
@@ -18,14 +19,22 @@ import type { Extension, ExtensionContributions } from "./types.js";
  * - `hooks` are merged per event.
  * - `skills` / `strictMcpConfig` take the last contributor's value.
  *
- * The `extensions` argument is injectable for tests; production passes the
- * compiled-in `BUILTIN_EXTENSIONS`.
+ * Sources, folded through the same path: the compiled-in code extensions
+ * (`BUILTIN_EXTENSIONS`, injectable for tests) plus, when `cfg.extensionsManifestPath`
+ * is set, the declarative JSON manifest wrapped as a synthetic extension (so its MCP
+ * keys are deduped against the code extensions too).
  */
 export async function loadExtensions(
   cfg: RuntimeConfig,
   extensions: Extension[] = BUILTIN_EXTENSIONS,
 ): Promise<ExtensionContributions> {
   const ctx = { cwd: cfg.cwd };
+
+  const all = [...extensions];
+  if (cfg.extensionsManifestPath) {
+    const manifest = loadManifestFile(cfg.extensionsManifestPath);
+    all.push({ name: `manifest:${cfg.extensionsManifestPath}`, setup: () => manifest });
+  }
 
   const mcpServers: Record<string, McpServerConfig> = {};
   const allowedTools: string[] = [];
@@ -35,7 +44,7 @@ export async function loadExtensions(
   let skills: ExtensionContributions["skills"];
   let strictMcpConfig: boolean | undefined;
 
-  for (const ext of extensions) {
+  for (const ext of all) {
     let contrib: ExtensionContributions;
     try {
       contrib = await ext.setup(ctx);

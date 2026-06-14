@@ -134,8 +134,31 @@ Full schema at `/docs`.
 | `RUNTIME_MAX_CONCURRENT_TURNS` | `2` | Admission limit; excess turns get HTTP `429` (`0` = unlimited) |
 | `RUNTIME_SESSION_TTL_MS` | `0` | Idle-session GC: drop+reclaim a session after this idle time (`0` = disabled) |
 | `RUNTIME_GC_INTERVAL_MS` | `3600000` | Idle-session GC sweep interval (only active when TTL > 0) |
+| `RUNTIME_EXTENSIONS_FILE` | *(unset = none)* | Path to a declarative extensions manifest (JSON); see [Extensions](#extensions) |
 
 Full list and notes in [`.env.example`](.env.example).
+
+## Extensions
+
+The runtime ships a self-contained extension subsystem (`apps/runtime/src/extensions/`) for adding **custom tools, external MCP servers, hooks, and skills** without touching the core. Every contribution is built once at startup and merged onto the secure base `Options` by a single pure composer (`applyExtensions`); with nothing configured, behavior is unchanged.
+
+Two authoring tiers:
+
+- **Code tier (`builtin.ts`)** — for in-process custom tools (`createSdkMcpServer` + `tool()`) and hook callbacks, which are live JS and can't be expressed as data. Implement the `Extension` contract (`name` + `setup(ctx)`) and add it to `BUILTIN_EXTENSIONS`; it compiles into the image.
+- **Declarative tier (`RUNTIME_EXTENSIONS_FILE`)** — a JSON manifest for the serializable bits: external MCP servers (stdio/SSE/HTTP), local plugin dirs, skill enablement, and discovery dirs. No code, no rebuild.
+
+```jsonc
+// extensions.json
+{
+  "mcpServers": { "company-api": { "type": "http", "url": "https://…/mcp", "headers": { "x-key": "…" } } },
+  "allowedTools": ["mcp__company-api__*"],
+  "plugins": [{ "type": "local", "path": "/ext/bundle", "skipMcpDiscovery": true }],
+  "skills": ["code-review", "deploy"],
+  "additionalDirectories": ["/ext/skills"]
+}
+```
+
+> ⚠️ **Trust boundary.** Extensions are supplied by the **operator**, not by remote users. The composer structurally prevents a contribution from changing the security perimeter (`permissionMode`, `disallowedTools`, `settingSources`, `env`, …) and always keeps the Bash allowlist hook first. But custom tools / MCP servers run **outside** the Bash allowlist (it matches only `Bash`), so the **container hardening** (read-only rootfs, `cap_drop: ALL`, egress allowlist) is their real backstop. Only load extensions you trust.
 
 ## Observability
 
