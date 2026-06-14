@@ -6,11 +6,15 @@
 // Usage:
 //   node scripts/bench.mjs --benchmark hello-bench --base-url http://127.0.0.1:8080
 //   node scripts/bench.mjs --benchmark hello-bench --workspace /path/to/RUNTIME_CWD --out report.json
+//   node scripts/bench.mjs --benchmark swe-bench   --dataset swe-bench-lite.json --out report.json
 //
 // WARNING: --workspace (default ./.bench-workspace, or RUNTIME_CWD) is emptied between instances.
 // Point it at a dedicated directory that mirrors the runtime's RUNTIME_CWD — never a repo checkout
 // (a .git entry is refused as a safety net). The runtime under test holds the API key/backend
 // config; this script never needs them.
+//
+// The swe-bench benchmark needs git + a downloaded dataset file + python/Docker/swebench for scoring;
+// see docs/benchmarks.md for the prerequisites and flags.
 
 import { spawn } from "node:child_process";
 

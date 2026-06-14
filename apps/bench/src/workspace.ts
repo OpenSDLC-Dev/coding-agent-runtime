@@ -29,6 +29,16 @@ export async function resetWorkspace(dir: string): Promise<void> {
   await Promise.all(entries.map((e) => rm(join(dir, e), { recursive: true, force: true })));
 }
 
+// Remove a `.git` directory a prepare() hook (e.g. a SWE-bench clone) left in the workspace, so the
+// next instance's resetWorkspace sees a plain file tree instead of tripping its repo-root guard. Uses
+// fs.rm (force = no error if absent), never a shelled `rm -rf`. Safe to call unconditionally: it only
+// runs after a successful resetWorkspace proved the dir held no .git at the start of the instance, so
+// the only .git it can delete is one this run's prepare() just created — never a real checkout.
+export async function removeGitDir(dir: string): Promise<void> {
+  assertSafeWorkspace(dir);
+  await rm(join(dir, ".git"), { recursive: true, force: true });
+}
+
 export async function seedFiles(dir: string, files: Record<string, string>): Promise<void> {
   assertSafeWorkspace(dir);
   for (const [rel, content] of Object.entries(files)) {
