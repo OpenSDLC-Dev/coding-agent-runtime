@@ -14,6 +14,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Add a repo-root `REVIEW.md` that tunes the managed Code Review service (and the local `/code-review` command) for this repo: security-first severity calibration that treats Bash-allowlist parser regressions, container-hardening rollbacks, exposing the unauthenticated runtime, internal-error leakage, SSE turn-contract breaks, and SDK × CLI version drift as Important; repo-specific "always check" rules (env vars documented across `.env.example`/README/compose, runtime/SSE changes tested via `fakeQueryFn`, same-PR doc sync, English-only artifacts); and skip rules for the deliberately deferred multi-tenant scope and CI-enforced lint/typecheck.
+
 ## [0.7.0] - 2026-06-13 — Delivery workflow & SDK/CLI refresh
 
 ### Added
