@@ -39,6 +39,12 @@ describe("compare", () => {
     expect(compare(baseline, report, { tolerance: 0.1 }).verdict).toBe("regress");
   });
 
+  it("treats a drop exactly equal to the tolerance as a pass (boundary is inclusive)", () => {
+    // delta = 0.4 - 0.6 = -0.2, tolerance 0.2 -> rateDelta === -tolerance, not a regression.
+    const report = makeReport({ summary: makeSummary({ resolved: 2, resolveRate: 0.4 }) });
+    expect(compare(baseline, report, { tolerance: 0.2 }).verdict).toBe("pass");
+  });
+
   it("reports cost/turn deltas but never gates on them", () => {
     // Same resolve rate, but much costlier and slower -> still a pass.
     const report = makeReport({

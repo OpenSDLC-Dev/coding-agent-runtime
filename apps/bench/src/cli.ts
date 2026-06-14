@@ -14,7 +14,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { helloBench } from "./adapters/hello-bench/index.js";
 import { defaultGitClone } from "./adapters/swebench/git.js";
 import { createSweBenchAdapter } from "./adapters/swebench/index.js";
@@ -40,7 +40,7 @@ const DEFAULT_BASELINE_DIR = fileURLToPath(new URL("../baselines", import.meta.u
 const DEFAULT_HISTORY_DIR = fileURLToPath(new URL("../history", import.meta.url));
 const DEFAULT_BENCHMARKS_OUT = fileURLToPath(new URL("../../../BENCHMARKS.md", import.meta.url));
 
-interface CliArgs {
+export interface CliArgs {
   command: string;
   benchmark: string;
   baseUrl: string;
@@ -66,7 +66,7 @@ interface CliArgs {
   modelName: string;
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const get = (name: string): string | undefined => {
     const i = argv.indexOf(`--${name}`);
     return i !== -1 ? argv[i + 1] : undefined;
@@ -154,10 +154,35 @@ async function buildBenchmark(
   throw new Error(`unknown benchmark: ${args.benchmark} (known: hello-bench, swe-bench)`);
 }
 
-async function emitMarkdown(args: CliArgs): Promise<void> {
+export async function emitMarkdown(args: CliArgs): Promise<void> {
   const md = renderBenchmarks(await loadAllBaselines(args.baselineDir));
   await writeFile(args.benchmarksOut, md, "utf8");
   console.log(`[bench] wrote ${args.benchmarksOut}`);
+}
+
+// Apply the post-run tracking flags (history / accept / compare / emit-markdown) and return the
+// process exit code: non-zero only when --compare finds a regression. Pure I/O over the committed
+// dirs + the report, so it is unit-testable with a tmp dir and a synthetic report.
+export async function applyTracking(report: RunReport, args: CliArgs): Promise<number> {
+  const key = baselineKey(report.config);
+  let exitCode = 0;
+  if (args.updateHistory) {
+    await appendHistory(args.historyDir, historyEntryFromReport(report, report.finishedAt));
+    console.log(`[bench] appended history for ${key}`);
+  }
+  if (args.accept) {
+    await writeBaseline(args.baselineDir, baselineFromReport(report, report.finishedAt));
+    console.log(`[bench] accepted baseline ${key}`);
+  }
+  if (args.compare) {
+    const result = compare(await loadBaseline(args.baselineDir, key), report);
+    console.log(`[bench] compare: ${result.verdict.toUpperCase()} -- ${result.detail}`);
+    exitCode = exitCodeForVerdict(result.verdict);
+  }
+  if (args.emitMarkdown) {
+    await emitMarkdown(args);
+  }
+  return exitCode;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -207,26 +232,10 @@ async function runCommand(args: CliArgs): Promise<void> {
     await writeFile(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
     console.log(`[bench] report written to ${args.out}`);
   }
-  if (args.updateHistory) {
-    await appendHistory(args.historyDir, historyEntryFromReport(report, report.finishedAt));
-    console.log(`[bench] appended history for ${key}`);
-  }
-  if (args.accept) {
-    await writeBaseline(args.baselineDir, baselineFromReport(report, report.finishedAt));
-    console.log(`[bench] accepted baseline ${key}`);
-  }
-  if (args.compare) {
-    const baseline = await loadBaseline(args.baselineDir, key);
-    const result = compare(baseline, report);
-    console.log(`[bench] compare: ${result.verdict.toUpperCase()} -- ${result.detail}`);
-    process.exitCode = exitCodeForVerdict(result.verdict);
-  }
-  if (args.emitMarkdown) {
-    await emitMarkdown(args);
-  }
+  process.exitCode = await applyTracking(report, args);
 }
 
-async function main(argv: string[]): Promise<void> {
+export async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   if (args.command === "emit-markdown") {
     await emitMarkdown(args);
@@ -235,7 +244,12 @@ async function main(argv: string[]): Promise<void> {
   await runCommand(args);
 }
 
-main(process.argv.slice(2)).catch((err) => {
-  console.error(`[bench] FAIL: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = 1;
-});
+// Run main() only when executed as the entry point (tsx src/cli.ts / node dist/cli.js), not when a
+// test imports the exported helpers above -- otherwise importing the module would kick off a real run.
+const argv1 = process.argv[1];
+if (argv1 && import.meta.url === pathToFileURL(argv1).href) {
+  main(process.argv.slice(2)).catch((err) => {
+    console.error(`[bench] FAIL: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  });
+}

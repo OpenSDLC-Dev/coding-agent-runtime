@@ -142,6 +142,7 @@ The model-backend URL is never read (the runtime does not expose it); name the b
 | `--update-history` | append this run to `apps/bench/history/<key>.jsonl` (an out-of-band trend trail) |
 | `--emit-markdown` | regenerate `BENCHMARKS.md` from the committed baselines after the run |
 | `--baseline-dir` / `--history-dir` | override the committed dirs (default under `apps/bench/`) |
+| `--benchmarks-out` | where `--emit-markdown` / the `emit-markdown` command writes (default repo-root `BENCHMARKS.md`) |
 
 `BENCHMARKS.md` can also be regenerated on its own, without a runtime:
 
