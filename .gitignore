@@ -24,6 +24,9 @@ Thumbs.db
 # docker-compose runtime artifacts (bind mount target)
 .runtime/
 
+# Benchmark harness default workspace (apps/bench seeds instances here when run locally)
+.bench-workspace/
+
 # Internal design/planning docs — kept local, not published to the public repo
 docs/superpowers/plans/
 docs/superpowers/specs/

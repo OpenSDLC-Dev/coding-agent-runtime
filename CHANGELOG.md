@@ -14,6 +14,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Benchmark harness walking skeleton (`apps/bench`, the new `@app/bench` workspace package) — the first piece of an evaluation/baseline subsystem for objectively measuring the runtime's coding ability. The harness is an **external orchestrator**, not an extension: it drives the runtime as a black box over the public HTTP/SSE contract (prepare a clean workspace → `POST /sessions` → reduce the SSE stream to a `TurnOutcome` → score out-of-band), reusing `scripts/smoke.mjs`'s chunk-buffering read loop and "the runtime holds the credentials" property. It ships a pluggable `Scorer` seam (a `stub` for tests, a `localCheckScorer` for in-repo tasks), a versioned, zod-validated `RunReport` schema, a sequential `runBenchmark` runner (one instance at a time, matching the single-workspace runtime), and `hello-bench` — three trivial self-contained instances that prove the pipeline end-to-end with zero external data and zero Docker. Driven via `node scripts/bench.mjs --benchmark hello-bench` against a running runtime; the harness's own vitest suite (fake runtime + recorded SSE fixtures + stub scorer) runs in `pnpm verify` with no model calls. Authoritative SWE-bench / Aider scoring, the config-tuple baseline, and regression tracking are planned follow-up milestones.
+
 ## [0.8.0] - 2026-06-14 — Pluggable extension subsystem
 
 ### Added
