@@ -103,7 +103,7 @@ curl -N -X POST http://127.0.0.1:8080/sessions \
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/healthz` | Health check |
-| `GET` | `/config` | Runtime config (default model, allowed models, Jaeger deep-link base, version, …) |
+| `GET` | `/config` | Runtime config (default model, allowed models, reasoning effort, max-turns backstop, Jaeger deep-link base, version, …) |
 | `POST` | `/sessions` | Create a session and run the first turn (**SSE**) |
 | `POST` | `/sessions/:id/turns` | Continue a session (resume, **SSE**) |
 | `GET` | `/sessions` | List sessions |
