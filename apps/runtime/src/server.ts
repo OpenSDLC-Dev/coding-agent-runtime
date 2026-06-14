@@ -46,6 +46,11 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
       jaegerBaseUrl: config.jaegerBaseUrl ?? null,
       version,
       includePartial: config.includePartial,
+      // The reasoning effort and turn backstop in force for this runtime. Exposed so an external
+      // benchmark harness can authoritatively snapshot the run's config tuple (these are operational,
+      // non-secret settings); the model backend URL is deliberately NOT exposed.
+      effort: config.effort,
+      maxTurns: config.maxTurns,
     }),
   );
 

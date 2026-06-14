@@ -12,9 +12,9 @@ describe("createServer", () => {
     expect(await res.json()).toEqual({ status: "ok" });
   });
 
-  it("GET /config includes allowlist and playground fields", async () => {
+  it("GET /config includes allowlist, playground, and run-config fields", async () => {
     const app = createServer({
-      config: { ...testConfig, allowedModels: ["MiniMax-M3"] },
+      config: { ...testConfig, allowedModels: ["MiniMax-M3"], effort: "high", maxTurns: 42 },
       queryFn: fakeQueryFn([]),
       sdk: {},
       version: "1.2.3",
@@ -26,6 +26,8 @@ describe("createServer", () => {
       jaegerBaseUrl: null,
       version: "1.2.3",
       includePartial: false,
+      effort: "high",
+      maxTurns: 42,
     });
   });
 
