@@ -23,6 +23,7 @@ export const testConfig: RuntimeConfig = {
   maxConcurrentTurns: 0,
   sessionTtlMs: 0,
   gcIntervalMs: 3_600_000,
+  extensionsManifestPath: undefined,
 };
 
 // Minimal message sequence for a successful single turn: init -> assistant(text + tool_use) -> user(tool_result) -> result(success)

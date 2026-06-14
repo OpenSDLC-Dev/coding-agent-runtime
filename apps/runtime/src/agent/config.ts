@@ -43,6 +43,10 @@ export interface RuntimeConfig {
   // How often the idle-session GC sweep runs (ms). Overridden via RUNTIME_GC_INTERVAL_MS; default 3600000 (1h).
   // Only active when sessionTtlMs > 0.
   gcIntervalMs: number;
+  // Optional path to a declarative extensions manifest (JSON). When set, loadExtensions reads it and
+  // folds external MCP servers / plugins / skills / dirs into the extension contributions. Overridden
+  // via RUNTIME_EXTENSIONS_FILE; unset = no declarative extensions.
+  extensionsManifestPath: string | undefined;
 }
 
 const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -116,6 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     maxConcurrentTurns: parseNonNegInt(env.RUNTIME_MAX_CONCURRENT_TURNS, 2),
     sessionTtlMs: parseNonNegInt(env.RUNTIME_SESSION_TTL_MS, 0),
     gcIntervalMs: parsePositiveInt(env.RUNTIME_GC_INTERVAL_MS, 3_600_000),
+    extensionsManifestPath: env.RUNTIME_EXTENSIONS_FILE || undefined,
   };
 }
 

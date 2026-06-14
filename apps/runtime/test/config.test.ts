@@ -41,6 +41,7 @@ describe("loadConfig", () => {
       maxConcurrentTurns: 2,
       sessionTtlMs: 0,
       gcIntervalMs: 3_600_000,
+      extensionsManifestPath: undefined,
     });
   });
 
@@ -93,6 +94,14 @@ describe("loadConfig", () => {
     expect(cfg.maxConcurrentTurns).toBe(0);
     expect(cfg.gcIntervalMs).toBe(3_600_000);
     expect(cfg.turnTimeoutMs).toBe(0);
+  });
+
+  it("parses RUNTIME_EXTENSIONS_FILE into extensionsManifestPath", () => {
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_EXTENSIONS_FILE: "/etc/ext.json" })
+        .extensionsManifestPath,
+    ).toBe("/etc/ext.json");
+    expect(loadConfig({ ANTHROPIC_API_KEY: "sk-test" }).extensionsManifestPath).toBeUndefined();
   });
 
   it("falls back to max effort for an invalid RUNTIME_EFFORT value", () => {
