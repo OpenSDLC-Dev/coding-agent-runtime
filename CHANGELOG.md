@@ -14,6 +14,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-14 — Pluggable extension subsystem
+
 ### Added
 
 - Pluggable extension subsystem (`apps/runtime/src/extensions/`) for operator-defined **custom tools, external MCP servers, hooks, and skills**, with minimal intrusion into the runtime core. Two authoring tiers: compiled-in code extensions (`BUILTIN_EXTENSIONS`) for in-process tools/hook callbacks, and a declarative JSON manifest (`RUNTIME_EXTENSIONS_FILE`) for external MCP / local plugins / skill enablement / discovery dirs. Contributions are folded once at startup by `loadExtensions` and merged onto the secure base `Options` by one pure composer (`applyExtensions`). Extensions are an operator trust boundary: a hand-written `ExtensionContributions` subset structurally excludes the security perimeter (`permissionMode`, `disallowedTools`, `settingSources`, `env`, …), the Bash allowlist hook is always kept first, and `BASE_DISALLOWED_TOOLS` is always re-asserted; with no extensions configured `runTurn` behaves exactly as before.
@@ -154,7 +156,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Default the listen address to loopback (`127.0.0.1`) so the unauthenticated runtime is not silently exposed outside the container.
 - Run the agent in bypass-permissions mode, so the `disallowedTools` deny-list is the only built-in guardrail at this stage.
 
-[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9de19ce...HEAD
+[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8ab49cb...HEAD
+[0.8.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9de19ce...8ab49cb
 [0.7.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8113e5a...9de19ce
 [0.6.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/a9cd553...8113e5a
 [0.5.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/6a023be...a9cd553
