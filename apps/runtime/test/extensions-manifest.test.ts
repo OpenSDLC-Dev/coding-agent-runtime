@@ -59,6 +59,12 @@ describe("parseManifest", () => {
       /invalid/i,
     );
   });
+
+  it("rejects an unknown field inside an MCP server block (typo caught)", () => {
+    expect(() => parseManifest(JSON.stringify({ mcpServers: { x: { comand: "oops" } } }))).toThrow(
+      /invalid/i,
+    );
+  });
 });
 
 describe("loadExtensions with a manifest file", () => {

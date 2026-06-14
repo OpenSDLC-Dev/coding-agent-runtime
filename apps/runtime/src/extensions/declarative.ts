@@ -11,40 +11,50 @@ import type { ExtensionContributions } from "./types.js";
 const stringRecord = z.record(z.string(), z.string());
 const toolPolicy = z.array(z.unknown());
 
-const mcpStdio = z.object({
-  type: z.literal("stdio").optional(),
-  command: z.string(),
-  args: z.array(z.string()).optional(),
-  env: stringRecord.optional(),
-  timeout: z.number().optional(),
-  alwaysLoad: z.boolean().optional(),
-});
+// Inner schemas are strict too, so an operator's typo inside an MCP/plugin block (e.g. `comand`)
+// surfaces as an error rather than being silently stripped.
+const mcpStdio = z
+  .object({
+    type: z.literal("stdio").optional(),
+    command: z.string(),
+    args: z.array(z.string()).optional(),
+    env: stringRecord.optional(),
+    timeout: z.number().optional(),
+    alwaysLoad: z.boolean().optional(),
+  })
+  .strict();
 
-const mcpSse = z.object({
-  type: z.literal("sse"),
-  url: z.string(),
-  headers: stringRecord.optional(),
-  tools: toolPolicy.optional(),
-  timeout: z.number().optional(),
-  alwaysLoad: z.boolean().optional(),
-});
+const mcpSse = z
+  .object({
+    type: z.literal("sse"),
+    url: z.string(),
+    headers: stringRecord.optional(),
+    tools: toolPolicy.optional(),
+    timeout: z.number().optional(),
+    alwaysLoad: z.boolean().optional(),
+  })
+  .strict();
 
-const mcpHttp = z.object({
-  type: z.literal("http"),
-  url: z.string(),
-  headers: stringRecord.optional(),
-  tools: toolPolicy.optional(),
-  timeout: z.number().optional(),
-  alwaysLoad: z.boolean().optional(),
-});
+const mcpHttp = z
+  .object({
+    type: z.literal("http"),
+    url: z.string(),
+    headers: stringRecord.optional(),
+    tools: toolPolicy.optional(),
+    timeout: z.number().optional(),
+    alwaysLoad: z.boolean().optional(),
+  })
+  .strict();
 
 const mcpServer = z.union([mcpSse, mcpHttp, mcpStdio]);
 
-const plugin = z.object({
-  type: z.literal("local"),
-  path: z.string(),
-  skipMcpDiscovery: z.boolean().optional(),
-});
+const plugin = z
+  .object({
+    type: z.literal("local"),
+    path: z.string(),
+    skipMcpDiscovery: z.boolean().optional(),
+  })
+  .strict();
 
 const manifestSchema = z
   .object({
