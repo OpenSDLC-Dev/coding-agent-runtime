@@ -6,6 +6,7 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { IdempotencyStore } from "../src/agent/idempotency.js";
 import type { QueryFn } from "../src/agent/runtime.js";
 import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
@@ -100,12 +101,13 @@ describe("SSE routes", () => {
 
   it("POST /sessions/:id/turns resumes a known session", async () => {
     const { app, registry } = makeApp();
-    // create the session first
-    await app.request("/sessions", {
+    // create the session first, and drain its stream so the turn finishes (releases the in-flight slot)
+    const first = await app.request("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: "hi" }),
     });
+    await collectSse(first);
     expect(registry.has("sess-1")).toBe(true);
     const res = await app.request("/sessions/sess-1/turns", {
       method: "POST",
@@ -188,6 +190,62 @@ describe("SSE routes", () => {
     // res3 also uses the hung queryFn; abort + drain so the stream (and its slot) closes cleanly.
     registry.abort("sess-1");
     await collectSse(res3);
+  });
+
+  // Hang after init so a turn holds its session active while we probe a duplicate.
+  const hang: QueryFn = (args) => {
+    const signal = args.options.abortController?.signal;
+    return (async function* () {
+      yield sampleMessages[0] as never; // init (sess-1)
+      await new Promise<void>((_, reject) => {
+        if (signal?.aborted) return reject(new Error("aborted"));
+        signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    })();
+  };
+
+  it("rejects a duplicate turn on a session that already has one in flight (409)", async () => {
+    const { app, registry } = makeApp({ queryFn: hang });
+    const hdr = { "Content-Type": "application/json" };
+    const res1 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "a" }),
+    });
+    expect(res1.status).toBe(200);
+    expect(registry.get("sess-1")?.status).toBe("running");
+    // a second turn on the same session while the first is in flight is rejected, not run concurrently
+    const res2 = await app.request("/sessions/sess-1/turns", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "b" }),
+    });
+    expect(res2.status).toBe(409);
+    // free the first turn so its stream + slot close cleanly
+    registry.abort("sess-1");
+    await collectSse(res1);
+  });
+
+  it("rejects a duplicate request carrying the same Idempotency-Key (409)", async () => {
+    const { app, registry } = makeApp({
+      queryFn: hang,
+      idempotency: new IdempotencyStore(600_000),
+    });
+    const hdr = { "Content-Type": "application/json", "Idempotency-Key": "abc" };
+    const res1 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "a" }),
+    });
+    expect(res1.status).toBe(200);
+    const res2 = await app.request("/sessions", {
+      method: "POST",
+      headers: hdr,
+      body: JSON.stringify({ prompt: "a" }),
+    });
+    expect(res2.status).toBe(409);
+    registry.abort("sess-1");
+    await collectSse(res1);
   });
 
   describe("with telemetry active", () => {

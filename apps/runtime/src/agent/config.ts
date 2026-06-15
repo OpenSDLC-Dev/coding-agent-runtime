@@ -43,6 +43,10 @@ export interface RuntimeConfig {
   // How often the idle-session GC sweep runs (ms). Overridden via RUNTIME_GC_INTERVAL_MS; default 3600000 (1h).
   // Only active when sessionTtlMs > 0.
   gcIntervalMs: number;
+  // Idempotency-Key retention window (ms). When > 0, a client may send an `Idempotency-Key` header to make
+  // turn submission at-most-once: a duplicate key (in-flight, or completed within this window) is rejected
+  // with HTTP 409. Overridden via RUNTIME_IDEMPOTENCY_TTL_MS; default 600000 (10m); 0 = disabled (header ignored).
+  idempotencyTtlMs: number;
   // Optional path to a declarative extensions manifest (JSON). When set, loadExtensions reads it and
   // folds external MCP servers / plugins / skills / dirs into the extension contributions. Overridden
   // via RUNTIME_EXTENSIONS_FILE; unset = no declarative extensions.
@@ -120,6 +124,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     maxConcurrentTurns: parseNonNegInt(env.RUNTIME_MAX_CONCURRENT_TURNS, 2),
     sessionTtlMs: parseNonNegInt(env.RUNTIME_SESSION_TTL_MS, 0),
     gcIntervalMs: parsePositiveInt(env.RUNTIME_GC_INTERVAL_MS, 3_600_000),
+    idempotencyTtlMs: parseNonNegInt(env.RUNTIME_IDEMPOTENCY_TTL_MS, 600_000),
     extensionsManifestPath: env.RUNTIME_EXTENSIONS_FILE || undefined,
   };
 }

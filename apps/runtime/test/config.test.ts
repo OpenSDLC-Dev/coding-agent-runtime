@@ -41,6 +41,7 @@ describe("loadConfig", () => {
       maxConcurrentTurns: 2,
       sessionTtlMs: 0,
       gcIntervalMs: 3_600_000,
+      idempotencyTtlMs: 600_000,
       extensionsManifestPath: undefined,
     });
   });
@@ -64,9 +65,10 @@ describe("loadConfig", () => {
     expect(cfg.maxConcurrentTurns).toBe(2);
     expect(cfg.sessionTtlMs).toBe(0);
     expect(cfg.gcIntervalMs).toBe(3_600_000);
+    expect(cfg.idempotencyTtlMs).toBe(600_000);
   });
 
-  it("parses production-guard env vars (maxTurns, timeout, concurrency, GC)", () => {
+  it("parses production-guard env vars (maxTurns, timeout, concurrency, GC, idempotency)", () => {
     const cfg = loadConfig({
       ANTHROPIC_API_KEY: "sk-test",
       RUNTIME_MAX_TURNS: "30",
@@ -74,12 +76,14 @@ describe("loadConfig", () => {
       RUNTIME_MAX_CONCURRENT_TURNS: "4",
       RUNTIME_SESSION_TTL_MS: "86400000",
       RUNTIME_GC_INTERVAL_MS: "600000",
+      RUNTIME_IDEMPOTENCY_TTL_MS: "0", // 0 disables the Idempotency-Key store
     });
     expect(cfg.maxTurns).toBe(30);
     expect(cfg.turnTimeoutMs).toBe(60000);
     expect(cfg.maxConcurrentTurns).toBe(4);
     expect(cfg.sessionTtlMs).toBe(86400000);
     expect(cfg.gcIntervalMs).toBe(600000);
+    expect(cfg.idempotencyTtlMs).toBe(0);
   });
 
   it("allows 0 for maxTurns/concurrency (unlimited) but ignores invalid/non-positive gcInterval", () => {

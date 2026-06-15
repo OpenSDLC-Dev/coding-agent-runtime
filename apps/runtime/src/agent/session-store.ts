@@ -42,6 +42,16 @@ export class SessionRegistry {
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
+  // Per-session in-flight guard: atomically claim the active slot for a session. Returns false when a
+  // turn is already running for it (so the caller can reject a duplicate with 409 instead of clobbering
+  // the in-flight AbortController and running two CLIs against the one workspace). The reservation is
+  // released by finishTurn / abort, exactly like a normal turn's active controller.
+  tryReserve(id: string, abortController: AbortController): boolean {
+    if (this.active.has(id)) return false;
+    this.active.set(id, abortController);
+    return true;
+  }
+
   startTurn(
     id: string,
     opts: { model: string | undefined; abortController: AbortController },
