@@ -39,6 +39,23 @@ describe("SessionRegistry", () => {
     expect(reg.get("s1")?.changedFiles).toEqual(["/workspace/a.txt", "/workspace/b.txt"]);
   });
 
+  it("tryReserve admits an idle session and rejects a second turn while one is in flight", () => {
+    const reg = new SessionRegistry(fixedClock());
+    const ac = new AbortController();
+    expect(reg.tryReserve("s1", ac)).toBe(true);
+    // a duplicate turn while one is in flight is rejected, and the in-flight controller is not clobbered
+    expect(reg.tryReserve("s1", new AbortController())).toBe(false);
+    expect(reg.abort("s1")).toBe(true);
+    expect(ac.signal.aborted).toBe(true);
+  });
+
+  it("tryReserve admits again once the in-flight turn finishes", () => {
+    const reg = new SessionRegistry(fixedClock());
+    expect(reg.tryReserve("s1", new AbortController())).toBe(true);
+    reg.finishTurn("s1", "idle");
+    expect(reg.tryReserve("s1", new AbortController())).toBe(true);
+  });
+
   it("abort() aborts the active controller, marks aborted, and returns false when nothing active", () => {
     const reg = new SessionRegistry(fixedClock());
     const ac = new AbortController();

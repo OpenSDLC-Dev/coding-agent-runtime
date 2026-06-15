@@ -3,6 +3,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import type { RuntimeConfig } from "./agent/config.js";
+import { IdempotencyStore } from "./agent/idempotency.js";
 import type { QueryFn } from "./agent/runtime.js";
 import { startSessionGc } from "./agent/session-gc.js";
 import { SessionRegistry } from "./agent/session-store.js";
@@ -22,6 +23,9 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
   const { config, version = "0.0.0" } = deps;
   const registry = deps.registry ?? new SessionRegistry();
   const sdk: SessionSdk = deps.sdk ?? { getSessionInfo, getSessionMessages, deleteSession };
+  // Idempotency-Key store: only created (and thus only honored) when the retention window is enabled.
+  const idempotency =
+    config.idempotencyTtlMs > 0 ? new IdempotencyStore(config.idempotencyTtlMs) : undefined;
 
   // Reclaim idle sessions' on-disk transcripts so a long-running container's disk does not fill up.
   // No-op (and leaks no timer) unless RUNTIME_SESSION_TTL_MS > 0; the interval is unref()'d.
@@ -61,6 +65,7 @@ export function createServer(deps: ServerDeps): OpenAPIHono {
     sdk,
     version,
     contributions: deps.contributions,
+    idempotency,
   });
 
   app.doc31("/openapi.json", {

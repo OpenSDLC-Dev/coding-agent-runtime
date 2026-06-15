@@ -135,6 +135,7 @@ Full schema at `/docs`.
 | `RUNTIME_MAX_CONCURRENT_TURNS` | `2` | Admission limit; excess turns get HTTP `429` (`0` = unlimited) |
 | `RUNTIME_SESSION_TTL_MS` | `0` | Idle-session GC: drop+reclaim a session after this idle time (`0` = disabled) |
 | `RUNTIME_GC_INTERVAL_MS` | `3600000` | Idle-session GC sweep interval (only active when TTL > 0) |
+| `RUNTIME_IDEMPOTENCY_TTL_MS` | `600000` | `Idempotency-Key` retention window in ms; duplicate key → HTTP `409` (`0` = disabled) |
 | `RUNTIME_EXTENSIONS_FILE` | *(unset = none)* | Path to a declarative extensions manifest (JSON); see [Extensions](#extensions) |
 
 Full list and notes in [`.env.example`](.env.example).
@@ -193,6 +194,7 @@ This runtime follows the [Agent SDK hosting guide](https://code.claude.com/docs/
 
 - **Runaway backstop** — `RUNTIME_MAX_TURNS` (default 100) bounds agentic round-trips per turn; `RUNTIME_TURN_TIMEOUT_MS` (default off) adds an optional wall-clock deadline that aborts the turn.
 - **Admission control** — `RUNTIME_MAX_CONCURRENT_TURNS` (default 2) rejects excess turns with `429` so concurrent subprocesses cannot OOM the host. Size it with `agents = (RAM − overhead) / per-session RAM ceiling` (≈1 GiB/session) and keep it in step with the container `mem_limit`.
+- **Duplicate-turn guards** — a per-session **in-flight lock** rejects a second turn on a session that already has one running with `409` (so a retried/duplicate `POST` can't run two CLIs against the one workspace or orphan the in-flight abort handle). A client can additionally send an `Idempotency-Key` header for at-most-once submission: a duplicate key (in-flight, or completed within `RUNTIME_IDEMPOTENCY_TTL_MS`, default 10m; `0` disables) also gets `409`. Both are independent of the cross-session `429` admission limit.
 - **Disk reclamation** — `RUNTIME_SESSION_TTL_MS` (default off) GCs idle sessions and their transcripts on a long-running container.
 
 **Put auth at a gateway.** Per the hosting guide, the agent should receive *pre-authenticated* requests and must not validate user tokens itself — so the runtime has no inbound auth and binds loopback by default. Front it with an authenticating gateway before exposing it.

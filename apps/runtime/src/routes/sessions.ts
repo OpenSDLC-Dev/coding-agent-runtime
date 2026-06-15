@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { Semaphore } from "../agent/concurrency.js";
 import type { RuntimeConfig } from "../agent/config.js";
 import { isModelAllowed } from "../agent/config.js";
+import type { IdempotencyStore } from "../agent/idempotency.js";
 import { type QueryFn, runTurn, type SseEvent } from "../agent/runtime.js";
 import {
   extractChangedFiles,
@@ -54,6 +55,7 @@ export interface SessionRouteDeps {
   sdk: SessionSdk;
   version: string;
   contributions?: ExtensionContributions;
+  idempotency?: IdempotencyStore;
 }
 
 function readBody(c: Context): Promise<{ prompt?: unknown; model?: unknown }> {
@@ -84,13 +86,15 @@ export function startHeartbeat(stream: HeartbeatStream, ms: number): () => void 
 // This way, after `await streamTurn()` resolves, the sessionId in the registry is already ready (tests don't need to read the body).
 async function streamTurn(
   c: Context,
-  input: { prompt: string; model?: string; resumeId?: string },
+  input: { prompt: string; model?: string; resumeId?: string; idempotencyKey?: string },
   deps: SessionRouteDeps,
   sem: Semaphore,
 ): Promise<Response> {
+  const key = input.idempotencyKey;
   // Admission control: reject (rather than queue) when at capacity so concurrent subprocesses cannot OOM the host.
   // The slot is held until the SSE stream finishes; release() below covers every exit path (released guard prevents double-free).
   if (!sem.tryAcquire()) {
+    if (key) deps.idempotency?.release(key); // free the reservation so a later retry isn't a false duplicate
     return c.json({ error: "runtime at capacity" }, 429);
   }
   let released = false;
@@ -101,6 +105,16 @@ async function streamTurn(
   };
 
   const abortController = new AbortController();
+
+  // Per-session in-flight guard: one turn at a time per session. A duplicate continuation while a turn is
+  // already running is rejected with 409 rather than orphaning the in-flight AbortController and running two
+  // CLIs against the one workspace. New sessions (no resumeId) get a fresh id and cannot collide.
+  if (input.resumeId && !deps.registry.tryReserve(input.resumeId, abortController)) {
+    release();
+    if (key) deps.idempotency?.release(key);
+    return c.json({ error: "a turn is already in progress for this session" }, 409);
+  }
+
   const gen = runTurn(
     { ...input, abortController },
     deps.config,
@@ -131,6 +145,8 @@ async function streamTurn(
     // Pre-read failed: notify the client of the error over SSE to avoid a silent empty stream.
     const correlationId = randomUUID();
     console.error(`[sessions] pre-read error correlationId=${correlationId}:`, preErr);
+    if (input.resumeId) deps.registry.finishTurn(input.resumeId, "idle"); // release the in-flight reservation
+    if (key) deps.idempotency?.release(key); // a failed turn should not block a genuine retry
     return streamSSE(c, async (stream) => {
       try {
         await stream.writeSSE({
@@ -179,9 +195,11 @@ async function streamTurn(
           });
         }
         if (sid) deps.registry.finishTurn(sid, "idle");
+        if (key) deps.idempotency?.complete(key, sid); // a completed key dedups retries until its TTL
       } catch (err) {
         if (abortController.signal.aborted) {
           if (sid) deps.registry.finishTurn(sid, "aborted");
+          if (key) deps.idempotency?.release(key);
           await stream.writeSSE({
             event: "aborted",
             data: JSON.stringify({ sessionId: sid ?? null }),
@@ -191,6 +209,7 @@ async function streamTurn(
         const correlationId = randomUUID();
         console.error(`[sessions] error correlationId=${correlationId}:`, err);
         if (sid) deps.registry.finishTurn(sid, "error");
+        if (key) deps.idempotency?.release(key);
         await stream.writeSSE({
           event: "error",
           data: JSON.stringify({ message: "internal error", correlationId }),
@@ -201,6 +220,29 @@ async function streamTurn(
       release();
     }
   });
+}
+
+// Reserve the client's Idempotency-Key (when sent and the store is enabled). Returns a ready 409
+// Response for a duplicate, otherwise the (possibly undefined) key to thread through streamTurn,
+// which flips it to done / releases it on the turn's outcome.
+function reserveIdempotency(
+  c: Context,
+  deps: SessionRouteDeps,
+): { duplicate: Response } | { key: string | undefined } {
+  const store = deps.idempotency;
+  const key = store ? c.req.header("Idempotency-Key") : undefined;
+  if (store && key) {
+    const dup = store.begin(key);
+    if (dup) {
+      return {
+        duplicate: c.json(
+          { error: "duplicate request (Idempotency-Key in use)", sessionId: dup.sessionId ?? null },
+          409,
+        ),
+      };
+    }
+  }
+  return { key };
 }
 
 export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps): void {
@@ -219,6 +261,16 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
           : "Append a turn (resume, SSE)",
       tags: ["sessions"],
       request: {
+        headers: z.object({
+          "Idempotency-Key": z
+            .string()
+            .optional()
+            .openapi({
+              param: { name: "Idempotency-Key", in: "header", required: false },
+              description:
+                "Optional. Makes turn submission at-most-once: a duplicate key (in-flight, or completed within RUNTIME_IDEMPOTENCY_TTL_MS) is rejected with 409.",
+            }),
+        }),
         body: { content: { "application/json": { schema: CreateSessionBody } } },
       },
       responses: {
@@ -229,6 +281,10 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
         },
         400: { description: "prompt is missing or model is not on the allowlist" },
         404: { description: "session does not exist (turns only)" },
+        409: {
+          description:
+            "a turn is already in progress for this session, or the Idempotency-Key is already in use",
+        },
         429: { description: "runtime at capacity (RUNTIME_MAX_CONCURRENT_TURNS reached)" },
       },
     });
@@ -243,7 +299,9 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
-    return streamTurn(c, { prompt, model }, deps, sem);
+    const idem = reserveIdempotency(c, deps);
+    if ("duplicate" in idem) return idem.duplicate;
+    return streamTurn(c, { prompt, model, idempotencyKey: idem.key }, deps, sem);
   });
 
   // ---- POST /sessions/:id/turns: continuation ----
@@ -262,7 +320,9 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
-    return streamTurn(c, { prompt, model, resumeId: id }, deps, sem);
+    const idem = reserveIdempotency(c, deps);
+    if ("duplicate" in idem) return idem.duplicate;
+    return streamTurn(c, { prompt, model, resumeId: id, idempotencyKey: idem.key }, deps, sem);
   });
 
   // ---- REST endpoints ----

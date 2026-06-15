@@ -23,6 +23,7 @@ export const testConfig: RuntimeConfig = {
   maxConcurrentTurns: 0,
   sessionTtlMs: 0,
   gcIntervalMs: 3_600_000,
+  idempotencyTtlMs: 0,
   extensionsManifestPath: undefined,
 };
 
