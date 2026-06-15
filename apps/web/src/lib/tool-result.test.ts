@@ -46,11 +46,18 @@ describe("applyToolResults", () => {
     expect((next[1] as ToolMessage).result).toBe("second");
   });
 
-  it("falls back to the first running tool when the id is missing/unmatched", () => {
+  it("falls back to the oldest running tool when the result carries no toolUseId", () => {
     const messages: Message[] = [runningTool("tu-1")];
     const next = applyToolResults(messages, [{ isError: false, content: "x" }]);
     expect((next[0] as ToolMessage).status).toBe("done");
     expect((next[0] as ToolMessage).result).toBe("x");
+  });
+
+  it("leaves tools running when a present toolUseId matches nothing (fail-safe)", () => {
+    const messages: Message[] = [runningTool("tu-1")];
+    const next = applyToolResults(messages, [{ toolUseId: "tu-unknown", content: "x" }]);
+    expect(next).toBe(messages); // unchanged — no wrong tool resolved
+    expect((messages[0] as ToolMessage).status).toBe("running");
   });
 
   it("returns the messages unchanged when there is nothing running to resolve", () => {

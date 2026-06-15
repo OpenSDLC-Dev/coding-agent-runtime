@@ -32,8 +32,9 @@ export function applyToolResults(messages: Message[], results: ToolResult[]): Me
       idx = target.findIndex(
         (m) => m.kind === "tool" && m.toolUseId === r.toolUseId && m.status === "running",
       );
-    }
-    if (idx === -1) {
+      // A present-but-unmatched id (stale/unknown) is left running rather than risk resolving
+      // the wrong tool; only an absent id falls back to the oldest running tool (older runtimes).
+    } else {
       idx = target.findIndex((m) => m.kind === "tool" && m.status === "running");
     }
     if (idx === -1) continue;
