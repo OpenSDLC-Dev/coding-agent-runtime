@@ -132,6 +132,12 @@ async function streamTurn(
       firstEvt = step.value;
       if (firstEvt.event === "init") {
         sid = String(firstEvt.data.sessionId);
+        // Invariant: resume preserves the session id, so sid === resumeId. Defensively, if the SDK ever
+        // returns a different id, release the stale resumeId reservation so it can't leak and permanently
+        // 409 that session (startTurn below claims the active slot under the real sid).
+        if (input.resumeId && input.resumeId !== sid) {
+          deps.registry.finishTurn(input.resumeId, "idle");
+        }
         deps.registry.startTurn(sid, {
           model: input.model ?? deps.config.defaultModel,
           abortController,
@@ -145,7 +151,9 @@ async function streamTurn(
     // Pre-read failed: notify the client of the error over SSE to avoid a silent empty stream.
     const correlationId = randomUUID();
     console.error(`[sessions] pre-read error correlationId=${correlationId}:`, preErr);
-    if (input.resumeId) deps.registry.finishTurn(input.resumeId, "idle"); // release the in-flight reservation
+    // Release the in-flight reservation. Status-neutral here: startTurn hasn't run, so finishTurn only
+    // clears the active slot (its s.status === "running" guard leaves any prior status untouched).
+    if (input.resumeId) deps.registry.finishTurn(input.resumeId, "idle");
     if (key) deps.idempotency?.release(key); // a failed turn should not block a genuine retry
     return streamSSE(c, async (stream) => {
       try {
