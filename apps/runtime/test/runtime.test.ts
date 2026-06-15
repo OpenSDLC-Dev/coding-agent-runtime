@@ -30,6 +30,17 @@ describe("runTurn", () => {
     expect(asst?.data.toolUses).toEqual([{ id: "tu-1", name: "Bash", input: { command: "ls" } }]);
   });
 
+  it("forwards the tool result content (and toolUseId) in the tool_result event", async () => {
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(sampleMessages))) {
+      events.push(e);
+    }
+    const toolResult = events.find((e) => e.event === "tool_result");
+    expect(toolResult?.data.results).toEqual([
+      { toolUseId: "tu-1", isError: false, content: "a.txt" },
+    ]);
+  });
+
   it("maps a result error subtype into an error event", async () => {
     const errMsgs = [
       {

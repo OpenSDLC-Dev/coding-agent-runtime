@@ -24,6 +24,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - `GET /config` now also reports `effort` (the runtime's reasoning-effort level) and `maxTurns` (the turn backstop). Both are operational, non-secret settings already configured via `RUNTIME_EFFORT` / `RUNTIME_MAX_TURNS`; exposing them lets the external benchmark harness authoritatively snapshot a run's config tuple (the E2 baseline key) instead of guessing. The model-backend URL remains deliberately unexposed. Additive and backward-compatible — existing `/config` consumers ignore the new fields.
 
+### Fixed
+
+- The `tool_result` SSE event now carries the tool's actual result `content` (alongside the existing `toolUseId` and `isError`), so clients can render what a tool returned instead of only learning that it finished. `mapMessage` was dropping `block.content` from the SDK tool_result message. The web playground now links each result to its originating tool call by `toolUseId` (instead of guessing the first running tool) and renders the output. Additive and backward-compatible — consumers that ignore `content` are unaffected.
+
 ## [0.8.0] - 2026-06-14 — Pluggable extension subsystem
 
 ### Added

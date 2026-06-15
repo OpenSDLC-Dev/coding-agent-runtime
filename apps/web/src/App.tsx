@@ -7,6 +7,7 @@ import { SpecPanel } from "./components/SpecPanel";
 import { type ConnState, Topbar } from "./components/Topbar";
 import { getConfig, getHealth, type RuntimeConfigDto, stopSession, streamTurn } from "./lib/api";
 import { uid } from "./lib/format";
+import { applyToolResults, type ToolResult } from "./lib/tool-result";
 import type {
   AssistantMessage,
   ChangedFile,
@@ -38,13 +39,18 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
 // --- message factories (keep the discriminated union tidy) ---
 const mkUser = (text: string): UserMessage => ({ id: uid(), kind: "user", text });
 const mkAssistant = (text: string): AssistantMessage => ({ id: uid(), kind: "assistant", text });
-const mkTool = (name: string, input: Record<string, unknown> | null): ToolMessage => ({
+const mkTool = (
+  name: string,
+  input: Record<string, unknown> | null,
+  toolUseId?: string,
+): ToolMessage => ({
   id: uid(),
   kind: "tool",
   name,
   input,
   status: "running",
   result: null,
+  toolUseId,
 });
 const mkSystem = (text: string, error?: boolean): SystemMessage => ({
   id: uid(),
@@ -81,19 +87,6 @@ function newSession(model: string): Session {
     changedFiles: [],
     messages: [],
   };
-}
-
-// The runtime's tool_result / result payload shapes aren't pinned down, so pull
-// fields defensively and degrade gracefully when they're absent.
-function extractToolResult(data: Record<string, unknown>): string | null {
-  const v = data.content ?? data.result ?? data.output ?? data.text;
-  if (v == null) return null;
-  if (typeof v === "string") return v;
-  try {
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return String(v);
-  }
 }
 
 function extractFiles(data: Record<string, unknown>): ChangedFile[] {
@@ -244,23 +237,21 @@ export function App() {
             updateActive((s) => ({ ...s, messages: [...s.messages, mkAssistant(text)] }));
           }
           const toolUses = Array.isArray(data.toolUses)
-            ? (data.toolUses as Array<{ name?: unknown; input?: unknown }>)
+            ? (data.toolUses as Array<{ id?: unknown; name?: unknown; input?: unknown }>)
             : [];
           for (const t of toolUses) {
             const name = typeof t.name === "string" ? t.name : "tool";
             const input =
               t.input && typeof t.input === "object" ? (t.input as Record<string, unknown>) : null;
-            updateActive((s) => ({ ...s, messages: [...s.messages, mkTool(name, input)] }));
+            const toolUseId = typeof t.id === "string" ? t.id : undefined;
+            updateActive((s) => ({
+              ...s,
+              messages: [...s.messages, mkTool(name, input, toolUseId)],
+            }));
           }
         } else if (evt.event === "tool_result") {
-          const result = extractToolResult(data);
-          updateActive((s) => {
-            const idx = s.messages.findIndex((m) => m.kind === "tool" && m.status === "running");
-            if (idx === -1) return s;
-            const messages = s.messages.slice();
-            messages[idx] = { ...(messages[idx] as ToolMessage), status: "done", result };
-            return { ...s, messages };
-          });
+          const results = Array.isArray(data.results) ? (data.results as ToolResult[]) : [];
+          updateActive((s) => ({ ...s, messages: applyToolResults(s.messages, results) }));
         } else if (evt.event === "result") {
           endedWith = "result";
           const usage = (data.usage ?? {}) as { input_tokens?: number; output_tokens?: number };
