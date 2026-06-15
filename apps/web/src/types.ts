@@ -25,6 +25,7 @@ export interface ToolMessage {
   input: Record<string, unknown> | null;
   status: "running" | "done";
   result: string | null;
+  toolUseId?: string; // SDK tool_use id; links a tool_result back to its call
 }
 export interface ResultMessage {
   id: string;

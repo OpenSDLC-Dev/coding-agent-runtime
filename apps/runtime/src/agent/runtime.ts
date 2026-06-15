@@ -64,10 +64,16 @@ function mapMessage(m: SDKMessage): SseEvent | null {
     case "user": {
       const content = m.message.content;
       if (!Array.isArray(content)) return null;
-      const results: Array<{ toolUseId: string; isError: boolean }> = [];
+      // Forward the tool result payload (block.content: string | content-block array) alongside the
+      // linking id and error flag, so clients can render what a tool actually returned.
+      const results: Array<{ toolUseId: string; isError: boolean; content: unknown }> = [];
       for (const block of content) {
         if (block.type === "tool_result") {
-          results.push({ toolUseId: block.tool_use_id, isError: block.is_error ?? false });
+          results.push({
+            toolUseId: block.tool_use_id,
+            isError: block.is_error ?? false,
+            content: block.content,
+          });
         }
       }
       return results.length > 0 ? { event: "tool_result", data: { results } } : null;
@@ -175,6 +181,7 @@ export async function* runTurn(
           for (const r of (evt.data.results ?? []) as Array<{
             toolUseId: string;
             isError: boolean;
+            content: unknown;
           }>) {
             const ts = toolSpans.get(r.toolUseId);
             if (ts) {

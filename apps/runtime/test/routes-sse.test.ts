@@ -34,8 +34,10 @@ describe("SSE routes", () => {
       body: JSON.stringify({ prompt: "hi" }),
     });
     expect(res.status).toBe(200);
-    const { events } = await collectSse(res);
+    const { text, events } = await collectSse(res);
     expect(events).toEqual(["init", "assistant", "tool_result", "result"]);
+    // The tool_result frame carries the actual tool output, not just the linking id.
+    expect(text).toContain('"content":"a.txt"');
     const rec = registry.get("sess-1");
     expect(rec?.turns).toBe(1);
     expect(rec?.status).toBe("idle");
