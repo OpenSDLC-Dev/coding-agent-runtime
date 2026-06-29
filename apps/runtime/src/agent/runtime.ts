@@ -8,7 +8,14 @@ import { setUsageAttributes } from "../otel/usage.js";
 import { createBashAllowlistHook } from "../permissions/bash-allowlist.js";
 import type { RuntimeConfig } from "./config.js";
 
-export type SseEventName = "init" | "assistant" | "tool_result" | "result" | "error" | "aborted";
+export type SseEventName =
+  | "init"
+  | "assistant"
+  | "delta"
+  | "tool_result"
+  | "result"
+  | "error"
+  | "aborted";
 
 export interface SseEvent {
   event: SseEventName;
@@ -77,6 +84,18 @@ function mapMessage(m: SDKMessage): SseEvent | null {
         }
       }
       return results.length > 0 ? { event: "tool_result", data: { results } } : null;
+    }
+    case "stream_event": {
+      // Token-level streaming (SDKPartialAssistantMessage), emitted only when includePartialMessages is on.
+      // Forward text deltas as additive `delta` events; the complete `assistant` event still follows, so a
+      // client renders the deltas OR the final block, never both. Non-text frames (message_start, tool input,
+      // block start/stop, message_delta/stop) carry nothing a client needs here and map to no event.
+      // No SSE `id`: a partial is ephemeral and not a Last-Event-ID resumption point (unlike init/result/etc.).
+      const ev = m.event;
+      if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+        return { event: "delta", data: { index: ev.index, text: ev.delta.text } };
+      }
+      return null;
     }
     case "result":
       if (m.subtype === "success") {

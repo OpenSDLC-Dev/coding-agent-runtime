@@ -18,6 +18,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Bumped `hono` `4.12.23` → `4.12.25` to patch [GHSA-88fw-hqm2-52qc](https://github.com/advisories/GHSA-88fw-hqm2-52qc) (high): the CORS middleware reflected any `Origin` with credentials when `origin` was the wildcard `*`. The runtime's CORS is operator-configurable via `RUNTIME_CORS_ORIGINS` and defaults to `*` (`server.ts`), so this is relevant in principle — though mitigated in the default deployment (loopback bind, no inbound auth, gateway in front). Patch-level dependency bump only; no source or API change. Clears the `audit` CI gate (`pnpm audit --audit-level high`).
 
+### Fixed
+
+- Token-level streaming output now actually reaches SSE clients. `INCLUDE_PARTIAL_MESSAGES=1` already asked the Agent SDK to emit partial `stream_event` messages, but the SDK-message → SSE-event mapper had no case for them, so every token delta was silently dropped and the flag did nothing useful. The mapper now surfaces `content_block_delta`/`text_delta` partials as a new additive **`delta`** SSE event (`{ index, text }`). It is gated solely by the existing `INCLUDE_PARTIAL_MESSAGES` flag (default off ⇒ the SDK emits no partials and the stream is byte-identical to before) and is purely additive — existing clients ignore the unknown event. Note the dual-emission contract: the complete `assistant` event still follows the deltas, so a client renders the incremental deltas **or** the final block, never both. Aligns the runtime with the Agent SDK's [streaming-output](https://code.claude.com/docs/en/agent-sdk/streaming-output) guidance.
+
 ## [0.9.0] - 2026-06-15 — Benchmark & evaluation subsystem
 
 ### Added
