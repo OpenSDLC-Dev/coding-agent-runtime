@@ -10,7 +10,7 @@ import { IdempotencyStore } from "../src/agent/idempotency.js";
 import type { QueryFn } from "../src/agent/runtime.js";
 import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
-import { collectSse, fakeQueryFn, sampleMessages, testConfig } from "./helpers.js";
+import { collectSse, fakeQueryFn, partialMessages, sampleMessages, testConfig } from "./helpers.js";
 
 function makeApp(overrides: Partial<Parameters<typeof registerSessionRoutes>[1]> = {}) {
   const app = new OpenAPIHono();
@@ -44,6 +44,20 @@ describe("SSE routes", () => {
     expect(rec?.status).toBe("idle");
     expect(rec?.inputTokens).toBe(10);
     expect(rec?.outputTokens).toBe(20);
+  });
+
+  it("POST /sessions streams token-level delta frames when the SDK emits partial messages", async () => {
+    const { app } = makeApp({ queryFn: fakeQueryFn(partialMessages) });
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    const { text, events } = await collectSse(res);
+    expect(events).toEqual(["init", "delta", "delta", "assistant", "result"]);
+    expect(text).toContain("event: delta");
+    expect(text).toContain('"text":"hel"');
   });
 
   it("forwards a /goal slash-command prompt through POST /sessions verbatim", async () => {

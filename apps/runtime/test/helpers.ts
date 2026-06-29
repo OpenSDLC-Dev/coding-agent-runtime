@@ -78,6 +78,77 @@ export const sampleMessages: SDKMessage[] = [
   },
 ] as unknown as SDKMessage[];
 
+// A turn with partial streaming on: init -> stream_event(text_delta) x2 -> stream_event(input_json_delta, ignorable)
+// -> stream_event(message_start, ignorable) -> assistant(complete) -> result. The stream_event frames are
+// SDKPartialAssistantMessage shapes the SDK emits only when includePartialMessages is true; mapMessage must
+// surface the text deltas and drop the rest.
+export const partialMessages: SDKMessage[] = [
+  {
+    type: "system",
+    subtype: "init",
+    uuid: "u-init",
+    session_id: "sess-1",
+    model: "MiniMax-M3",
+    cwd: "/workspace",
+    tools: [],
+  },
+  {
+    type: "stream_event",
+    uuid: "u-d1",
+    session_id: "sess-1",
+    parent_tool_use_id: null,
+    event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hel" } },
+  },
+  {
+    type: "stream_event",
+    uuid: "u-d2",
+    session_id: "sess-1",
+    parent_tool_use_id: null,
+    event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "lo" } },
+  },
+  {
+    type: "stream_event",
+    uuid: "u-ij",
+    session_id: "sess-1",
+    parent_tool_use_id: null,
+    // A content_block_delta carrying tool-call input (not text) — must map to no event.
+    event: {
+      type: "content_block_delta",
+      index: 1,
+      delta: { type: "input_json_delta", partial_json: '{"a":1}' },
+    },
+  },
+  {
+    type: "stream_event",
+    uuid: "u-ms",
+    session_id: "sess-1",
+    parent_tool_use_id: null,
+    event: { type: "message_start" },
+  },
+  {
+    type: "assistant",
+    uuid: "u-asst",
+    session_id: "sess-1",
+    parent_tool_use_id: null,
+    message: { role: "assistant", content: [{ type: "text", text: "hello" }] },
+  },
+  {
+    type: "result",
+    subtype: "success",
+    uuid: "u-result",
+    session_id: "sess-1",
+    is_error: false,
+    num_turns: 1,
+    duration_ms: 5,
+    duration_api_ms: 4,
+    total_cost_usd: 0.01,
+    usage: { input_tokens: 10, output_tokens: 20 },
+    modelUsage: {},
+    result: "hello",
+    permission_denials: [],
+  },
+] as unknown as SDKMessage[];
+
 export function fakeQueryFn(messages: SDKMessage[]): QueryFn {
   return () =>
     (async function* () {

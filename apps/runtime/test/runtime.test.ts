@@ -7,7 +7,13 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type QueryFn, runTurn } from "../src/agent/runtime.js";
-import { fakeQueryFn, recordingQueryFn, sampleMessages, testConfig } from "./helpers.js";
+import {
+  fakeQueryFn,
+  partialMessages,
+  recordingQueryFn,
+  sampleMessages,
+  testConfig,
+} from "./helpers.js";
 
 describe("runTurn", () => {
   it("maps SDK messages into ordered SSE events", async () => {
@@ -39,6 +45,19 @@ describe("runTurn", () => {
     expect(toolResult?.data.results).toEqual([
       { toolUseId: "tu-1", isError: false, content: "a.txt" },
     ]);
+  });
+
+  it("surfaces stream_event text deltas as delta events before the final assistant event", async () => {
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(partialMessages))) {
+      events.push(e);
+    }
+    // The two text deltas stream first, the complete assistant block still arrives afterward,
+    // and the ignorable frames (input_json_delta tool input, message_start) produce no event.
+    expect(events.map((e) => e.event)).toEqual(["init", "delta", "delta", "assistant", "result"]);
+    const deltas = events.filter((e) => e.event === "delta");
+    expect(deltas[0]?.data).toEqual({ index: 0, text: "hel" });
+    expect(deltas[1]?.data).toEqual({ index: 0, text: "lo" });
   });
 
   it("maps a result error subtype into an error event", async () => {
@@ -319,6 +338,15 @@ describe("runTurn telemetry", () => {
     expect(turn?.attributes["gen_ai.conversation.id"]).toBe("sess-1");
     expect(turn?.attributes["gen_ai.usage.input_tokens"]).toBe(10);
     expect(turn?.attributes["gen_ai.usage.output_tokens"]).toBe(20);
+  });
+
+  it("does not create extra spans for stream_event deltas", async () => {
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(partialMessages))) {
+      // drain
+    }
+    const spans = exporter.getFinishedSpans();
+    expect(spans.filter((s) => s.name === "agent.turn")).toHaveLength(1);
+    expect(spans.filter((s) => s.name.startsWith("tool:"))).toHaveLength(0);
   });
 
   it("adds traceId to init and result events and injects TRACEPARENT into child env", async () => {
