@@ -14,6 +14,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Security
+
+- Bumped `hono` `4.12.23` → `4.12.25` to patch [GHSA-88fw-hqm2-52qc](https://github.com/advisories/GHSA-88fw-hqm2-52qc) (high): the CORS middleware reflected any `Origin` with credentials when `origin` was the wildcard `*`. The runtime's CORS is operator-configurable via `RUNTIME_CORS_ORIGINS` and defaults to `*` (`server.ts`), so this is relevant in principle — though mitigated in the default deployment (loopback bind, no inbound auth, gateway in front). Patch-level dependency bump only; no source or API change. Clears the `audit` CI gate (`pnpm audit --audit-level high`).
+
 ## [0.9.0] - 2026-06-15 — Benchmark & evaluation subsystem
 
 ### Added
