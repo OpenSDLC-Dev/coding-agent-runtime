@@ -58,8 +58,25 @@ export interface SessionRouteDeps {
   idempotency?: IdempotencyStore;
 }
 
-function readBody(c: Context): Promise<{ prompt?: unknown; model?: unknown }> {
+function readBody(
+  c: Context,
+): Promise<{ prompt?: unknown; model?: unknown; outputFormat?: unknown }> {
   return c.req.json().catch(() => ({}));
+}
+
+// Envelope-only validation for an opt-in structured-output request. Accepts { type: "json_schema",
+// schema: object } and forwards the schema verbatim (no JSON-Schema re-validation); absent → undefined;
+// malformed → an error string the caller turns into a 400.
+type OutputFormat = { type: "json_schema"; schema: Record<string, unknown> };
+function parseOutputFormat(raw: unknown): { outputFormat?: OutputFormat } | { error: string } {
+  if (raw === undefined) return {};
+  if (typeof raw !== "object" || raw === null) return { error: "outputFormat must be an object" };
+  const { type, schema } = raw as { type?: unknown; schema?: unknown };
+  if (type !== "json_schema") return { error: 'outputFormat.type must be "json_schema"' };
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return { error: "outputFormat.schema must be an object" };
+  }
+  return { outputFormat: { type: "json_schema", schema: schema as Record<string, unknown> } };
 }
 
 // SSE heartbeat: write a comment line ": keepalive\n\n" every `ms` to prevent reverse-proxy idle disconnects (spec §4.2/§5).
@@ -86,7 +103,13 @@ export function startHeartbeat(stream: HeartbeatStream, ms: number): () => void 
 // This way, after `await streamTurn()` resolves, the sessionId in the registry is already ready (tests don't need to read the body).
 async function streamTurn(
   c: Context,
-  input: { prompt: string; model?: string; resumeId?: string; idempotencyKey?: string },
+  input: {
+    prompt: string;
+    model?: string;
+    resumeId?: string;
+    idempotencyKey?: string;
+    outputFormat?: OutputFormat;
+  },
   deps: SessionRouteDeps,
   sem: Semaphore,
 ): Promise<Response> {
@@ -307,9 +330,16 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
+    const of = parseOutputFormat(body.outputFormat);
+    if ("error" in of) return c.json({ error: of.error }, 400);
     const idem = reserveIdempotency(c, deps);
     if ("duplicate" in idem) return idem.duplicate;
-    return streamTurn(c, { prompt, model, idempotencyKey: idem.key }, deps, sem);
+    return streamTurn(
+      c,
+      { prompt, model, idempotencyKey: idem.key, outputFormat: of.outputFormat },
+      deps,
+      sem,
+    );
   });
 
   // ---- POST /sessions/:id/turns: continuation ----
@@ -328,9 +358,16 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
     }
+    const of = parseOutputFormat(body.outputFormat);
+    if ("error" in of) return c.json({ error: of.error }, 400);
     const idem = reserveIdempotency(c, deps);
     if ("duplicate" in idem) return idem.duplicate;
-    return streamTurn(c, { prompt, model, resumeId: id, idempotencyKey: idem.key }, deps, sem);
+    return streamTurn(
+      c,
+      { prompt, model, resumeId: id, idempotencyKey: idem.key, outputFormat: of.outputFormat },
+      deps,
+      sem,
+    );
   });
 
   // ---- REST endpoints ----

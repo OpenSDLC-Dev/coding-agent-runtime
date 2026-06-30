@@ -10,7 +10,42 @@ import { IdempotencyStore } from "../src/agent/idempotency.js";
 import type { QueryFn } from "../src/agent/runtime.js";
 import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
-import { collectSse, fakeQueryFn, partialMessages, sampleMessages, testConfig } from "./helpers.js";
+import {
+  collectSse,
+  fakeQueryFn,
+  partialMessages,
+  recordingQueryFn,
+  sampleMessages,
+  testConfig,
+} from "./helpers.js";
+
+const okResultWithStructured = [
+  {
+    type: "system",
+    subtype: "init",
+    uuid: "i",
+    session_id: "sess-1",
+    model: "m",
+    cwd: "/workspace",
+    tools: [],
+  },
+  {
+    type: "result",
+    subtype: "success",
+    uuid: "r",
+    session_id: "sess-1",
+    is_error: false,
+    num_turns: 1,
+    duration_ms: 1,
+    duration_api_ms: 1,
+    total_cost_usd: 0,
+    usage: {},
+    modelUsage: {},
+    result: "{}",
+    permission_denials: [],
+    structured_output: { ok: true },
+  },
+] as unknown as import("@anthropic-ai/claude-agent-sdk").SDKMessage[];
 
 function makeApp(overrides: Partial<Parameters<typeof registerSessionRoutes>[1]> = {}) {
   const app = new OpenAPIHono();
@@ -58,6 +93,76 @@ describe("SSE routes", () => {
     expect(events).toEqual(["init", "delta", "delta", "assistant", "result"]);
     expect(text).toContain("event: delta");
     expect(text).toContain('"text":"hel"');
+  });
+
+  it("POST /sessions threads a valid outputFormat into query options and surfaces structured_output", async () => {
+    const { queryFn, captured } = recordingQueryFn(okResultWithStructured);
+    const { app } = makeApp({ queryFn });
+    const outputFormat = { type: "json_schema", schema: { type: "object" } };
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi", outputFormat }),
+    });
+    expect(res.status).toBe(200);
+    const { text } = await collectSse(res);
+    expect(captured()?.outputFormat).toEqual(outputFormat);
+    expect(text).toContain('"structured_output"');
+  });
+
+  it("POST /sessions rejects a malformed outputFormat with 400", async () => {
+    const { app } = makeApp();
+    const bad = [
+      "not-an-object",
+      42,
+      { type: "xml" },
+      { type: "json_schema" },
+      { type: "json_schema", schema: "nope" },
+    ];
+    for (const outputFormat of bad) {
+      const res = await app.request("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "hi", outputFormat }),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("POST /sessions/:id/turns threads a valid outputFormat into query options", async () => {
+    const { queryFn, captured } = recordingQueryFn(okResultWithStructured);
+    const { app } = makeApp({ queryFn });
+    const first = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    });
+    await collectSse(first);
+    const outputFormat = { type: "json_schema", schema: { type: "object" } };
+    const res = await app.request("/sessions/sess-1/turns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "again", outputFormat }),
+    });
+    expect(res.status).toBe(200);
+    await collectSse(res);
+    expect(captured()?.outputFormat).toEqual(outputFormat);
+  });
+
+  it("POST /sessions/:id/turns rejects a malformed outputFormat with 400", async () => {
+    const { app } = makeApp();
+    const first = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    });
+    await collectSse(first);
+    const res = await app.request("/sessions/sess-1/turns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "again", outputFormat: { type: "json_schema", schema: 1 } }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("forwards a /goal slash-command prompt through POST /sessions verbatim", async () => {

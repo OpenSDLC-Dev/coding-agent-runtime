@@ -30,6 +30,9 @@ export interface RunTurnInput {
   model?: string;
   resumeId?: string;
   abortController?: AbortController;
+  // Opt-in structured outputs: a JSON-schema envelope forwarded to the SDK so the model returns
+  // schema-conforming JSON on the final result. Non-perimeter (constrains output shape only).
+  outputFormat?: NonNullable<Options["outputFormat"]>;
 }
 
 // Normalize process.env (whose values may be undefined) into the Record<string,string> that query() expects, then layer on runtime overrides.
@@ -109,6 +112,10 @@ function mapMessage(m: SDKMessage): SseEvent | null {
             modelUsage: m.modelUsage,
             num_turns: m.num_turns,
             is_error: m.is_error,
+            // Surface validated structured output when the turn requested it (absent otherwise).
+            ...(m.structured_output !== undefined
+              ? { structured_output: m.structured_output }
+              : {}),
           },
         };
       }
@@ -147,6 +154,9 @@ export async function* runTurn(
     model: input.model ?? cfg.defaultModel,
     // Reasoning effort is maxed out by default (cfg.effort defaults to "max", adjustable via RUNTIME_EFFORT); see config.ts for details.
     effort: cfg.effort,
+    // Opt-in per-request structured outputs. Non-perimeter: it only constrains the shape of the model's
+    // final output and grants the agent no new capability, so it is safe to accept per request.
+    ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     // P0 safety fallback: deny always wins, blocking network access / privilege escalation / dangerous deletes. This is a hard fallback that does not depend on file settings.

@@ -2,10 +2,20 @@ import { z } from "@hono/zod-openapi";
 
 export const StatusEnum = z.enum(["running", "idle", "error", "aborted"]);
 
+// Opt-in structured-output request. The runtime forwards `schema` verbatim to the SDK; runtime
+// validation lives in the route (envelope-only), this schema is for OpenAPI accuracy.
+export const OutputFormat = z
+  .object({
+    type: z.literal("json_schema"),
+    schema: z.record(z.string(), z.unknown()),
+  })
+  .openapi("OutputFormat");
+
 export const CreateSessionBody = z
   .object({
     prompt: z.string().min(1).openapi({ example: "Create a hello.txt in /workspace" }),
     model: z.string().optional().openapi({ example: "MiniMax-M3" }),
+    outputFormat: OutputFormat.optional(),
   })
   .openapi("CreateSessionBody");
 
@@ -13,6 +23,7 @@ export const TurnBody = z
   .object({
     prompt: z.string().min(1),
     model: z.string().optional(),
+    outputFormat: OutputFormat.optional(),
   })
   .openapi("TurnBody");
 
