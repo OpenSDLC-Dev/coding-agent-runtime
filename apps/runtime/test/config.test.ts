@@ -43,6 +43,7 @@ describe("loadConfig", () => {
       gcIntervalMs: 3_600_000,
       idempotencyTtlMs: 600_000,
       extensionsManifestPath: undefined,
+      maxBodyBytes: 12 * 1024 * 1024,
     });
   });
 
@@ -106,6 +107,13 @@ describe("loadConfig", () => {
         .extensionsManifestPath,
     ).toBe("/etc/ext.json");
     expect(loadConfig({ ANTHROPIC_API_KEY: "sk-test" }).extensionsManifestPath).toBeUndefined();
+  });
+
+  it("parses RUNTIME_MAX_BODY_BYTES into maxBodyBytes (default 12 MiB)", () => {
+    expect(
+      loadConfig({ ANTHROPIC_API_KEY: "sk-test", RUNTIME_MAX_BODY_BYTES: "1048576" }).maxBodyBytes,
+    ).toBe(1_048_576);
+    expect(loadConfig({ ANTHROPIC_API_KEY: "sk-test" }).maxBodyBytes).toBe(12 * 1024 * 1024);
   });
 
   it("falls back to max effort for an invalid RUNTIME_EFFORT value", () => {

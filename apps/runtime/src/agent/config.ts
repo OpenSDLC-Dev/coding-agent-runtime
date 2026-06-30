@@ -51,6 +51,10 @@ export interface RuntimeConfig {
   // folds external MCP servers / plugins / skills / dirs into the extension contributions. Overridden
   // via RUNTIME_EXTENSIONS_FILE; unset = no declarative extensions.
   extensionsManifestPath: string | undefined;
+  // Max request body size (bytes) for the turn-submission endpoints, enforced before the body is buffered
+  // so a giant payload (e.g. base64 image content) is rejected with HTTP 413 rather than allocated in full.
+  // Overridden via RUNTIME_MAX_BODY_BYTES; default 12 MiB; 0 = disabled (no limit).
+  maxBodyBytes: number;
 }
 
 const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -126,6 +130,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     gcIntervalMs: parsePositiveInt(env.RUNTIME_GC_INTERVAL_MS, 3_600_000),
     idempotencyTtlMs: parseNonNegInt(env.RUNTIME_IDEMPOTENCY_TTL_MS, 600_000),
     extensionsManifestPath: env.RUNTIME_EXTENSIONS_FILE || undefined,
+    maxBodyBytes: parseNonNegInt(env.RUNTIME_MAX_BODY_BYTES, 12 * 1024 * 1024),
   };
 }
 

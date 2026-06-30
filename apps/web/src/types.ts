@@ -12,6 +12,7 @@ export interface UserMessage {
   id: string;
   kind: "user";
   text: string;
+  images?: string[]; // data URLs of attached images, for thumbnail display
 }
 export interface AssistantMessage {
   id: string;

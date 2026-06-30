@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type QueryFn, runTurn } from "../src/agent/runtime.js";
 import {
+  drainPrompt,
   fakeQueryFn,
   partialMessages,
   recordingQueryFn,
@@ -197,6 +198,38 @@ describe("runTurn", () => {
     expect(err?.data).toMatchObject({
       subtype: "error_max_structured_output_retries",
       errors: ["could not produce valid output"],
+    });
+  });
+
+  it("passes a plain string prompt straight through to query (single-message mode preserved)", async () => {
+    const { queryFn, capturedPrompt } = recordingQueryFn();
+    for await (const _e of runTurn({ prompt: "hello world" }, testConfig, queryFn)) {
+      // drain
+    }
+    expect(capturedPrompt()).toBe("hello world");
+  });
+
+  it("builds a single streaming user message from multimodal content blocks", async () => {
+    const { queryFn, capturedPrompt } = recordingQueryFn();
+    const content = [
+      { type: "text" as const, text: "describe this image" },
+      {
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: "image/png", data: "AAAA" },
+      },
+    ];
+    for await (const _e of runTurn({ prompt: "", content }, testConfig, queryFn)) {
+      // drain
+    }
+    const prompt = capturedPrompt();
+    // content present ⇒ streaming-input mode (an AsyncIterable, not the raw string)
+    expect(typeof prompt).not.toBe("string");
+    const msgs = await drainPrompt(prompt);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      type: "user",
+      parent_tool_use_id: null,
+      message: { role: "user", content },
     });
   });
 
