@@ -95,6 +95,111 @@ describe("runTurn", () => {
     expect(err?.data).toMatchObject({ subtype: "error_during_execution", errors: ["boom"] });
   });
 
+  it("threads a per-request outputFormat into query options without touching the perimeter", async () => {
+    const { queryFn, captured } = recordingQueryFn();
+    const outputFormat = {
+      type: "json_schema" as const,
+      schema: { type: "object", properties: { x: { type: "string" } }, required: ["x"] },
+    };
+    for await (const _e of runTurn({ prompt: "hi", outputFormat }, testConfig, queryFn)) {
+      // drain
+    }
+    expect(captured()?.outputFormat).toEqual(outputFormat);
+    // exposing outputFormat per request does not weaken the perimeter
+    expect(captured()?.permissionMode).toBe("bypassPermissions");
+  });
+
+  it("omits outputFormat from query options when not requested", async () => {
+    const { queryFn, captured } = recordingQueryFn();
+    for await (const _e of runTurn({ prompt: "hi" }, testConfig, queryFn)) {
+      // drain
+    }
+    expect(captured()?.outputFormat).toBeUndefined();
+  });
+
+  it("surfaces structured_output on the result event when the SDK returns it", async () => {
+    const msgs = [
+      {
+        type: "system",
+        subtype: "init",
+        uuid: "i",
+        session_id: "s",
+        model: "m",
+        cwd: "/workspace",
+        tools: [],
+      },
+      {
+        type: "result",
+        subtype: "success",
+        uuid: "r",
+        session_id: "s",
+        is_error: false,
+        num_turns: 1,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        total_cost_usd: 0,
+        usage: {},
+        modelUsage: {},
+        result: "{}",
+        permission_denials: [],
+        structured_output: { company: "Anthropic", founded: 2021 },
+      },
+    ] as unknown as import("@anthropic-ai/claude-agent-sdk").SDKMessage[];
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(msgs))) {
+      events.push(e);
+    }
+    const result = events.find((e) => e.event === "result");
+    expect(result?.data.structured_output).toEqual({ company: "Anthropic", founded: 2021 });
+  });
+
+  it("leaves structured_output off the result event when the SDK returns none", async () => {
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(sampleMessages))) {
+      events.push(e);
+    }
+    const result = events.find((e) => e.event === "result");
+    expect(result?.data).not.toHaveProperty("structured_output");
+  });
+
+  it("maps error_max_structured_output_retries into an error event (passthrough)", async () => {
+    const msgs = [
+      {
+        type: "system",
+        subtype: "init",
+        uuid: "i",
+        session_id: "s",
+        model: "m",
+        cwd: "/workspace",
+        tools: [],
+      },
+      {
+        type: "result",
+        subtype: "error_max_structured_output_retries",
+        uuid: "e",
+        session_id: "s",
+        is_error: true,
+        num_turns: 1,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        total_cost_usd: 0,
+        usage: {},
+        modelUsage: {},
+        permission_denials: [],
+        errors: ["could not produce valid output"],
+      },
+    ] as unknown as import("@anthropic-ai/claude-agent-sdk").SDKMessage[];
+    const events = [];
+    for await (const e of runTurn({ prompt: "hi" }, testConfig, fakeQueryFn(msgs))) {
+      events.push(e);
+    }
+    const err = events.find((e) => e.event === "error");
+    expect(err?.data).toMatchObject({
+      subtype: "error_max_structured_output_retries",
+      errors: ["could not produce valid output"],
+    });
+  });
+
   it("passes the P0 security backstop options to query", async () => {
     let captured: Options | undefined;
     const capturing: QueryFn = (args) => {

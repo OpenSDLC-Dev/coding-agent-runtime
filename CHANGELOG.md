@@ -14,6 +14,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in **structured outputs** on the turn-submission endpoints (`POST /sessions`, `POST /sessions/:id/turns`). A request may carry an `outputFormat` envelope (`{ "type": "json_schema", "schema": { … } }`); the runtime validates the envelope (malformed → `400`), forwards the JSON Schema verbatim to the Agent SDK's `outputFormat` option, and surfaces the validated `structured_output` on the SSE `result` event. If the model can't satisfy the schema within the SDK's retry budget the turn ends with the SDK's `error_max_structured_output_retries` subtype on the SSE `error` event (clients distinguish it via `data.subtype`). Fully opt-in and additive: with no `outputFormat`, composed options and emitted events are byte-identical to before. `outputFormat` is per-request input only and never an extension contribution, so the security perimeter is untouched. Aligns the runtime with the Agent SDK's [structured-outputs](https://code.claude.com/docs/en/agent-sdk/structured-outputs) guidance.
+
 ### Security
 
 - Bumped `hono` `4.12.23` → `4.12.25` to patch [GHSA-88fw-hqm2-52qc](https://github.com/advisories/GHSA-88fw-hqm2-52qc) (high): the CORS middleware reflected any `Origin` with credentials when `origin` was the wildcard `*`. The runtime's CORS is operator-configurable via `RUNTIME_CORS_ORIGINS` and defaults to `*` (`server.ts`), so this is relevant in principle — though mitigated in the default deployment (loopback bind, no inbound auth, gateway in front). Patch-level dependency bump only; no source or API change. Clears the `audit` CI gate (`pnpm audit --audit-level high`).

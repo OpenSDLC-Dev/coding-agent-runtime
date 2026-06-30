@@ -15,6 +15,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the release history.
 ## Features
 
 - **Multi-turn coding sessions**: `POST /sessions` starts a new session and runs the first turn; `POST /sessions/:id/turns` continues via `resume` with preserved context. Everything streams over **SSE** (`init` / `assistant` / `tool_use` / `tool_result` / `result`). With `INCLUDE_PARTIAL_MESSAGES=1`, token-level `delta` events (`{ index, text }`) also stream as the assistant text is generated; the complete `assistant` event still follows each, so render the deltas **or** the final block, not both.
+- **Structured outputs** (opt-in): a turn request may include an `outputFormat` envelope (`{ "type": "json_schema", "schema": { … } }`); the runtime forwards the schema to the Agent SDK and surfaces the validated `structured_output` on the SSE `result` event (or the `error_max_structured_output_retries` subtype on the `error` event if the model can't satisfy the schema). Omit `outputFormat` and behavior is unchanged.
 - **Session management**: list / info / transcript / stop (abort the active turn) / delete; runtime state tracks turn count, cumulative tokens, cost, status, and changedFiles.
 - **Observability (OpenTelemetry)**: custom `agent.turn` and tool spans + an injected `TRACEPARENT` that stitches the child CLI's native spans into the same trace; usage → span attributes. Ships a compose stack (OTel Collector + Jaeger + Prometheus) and exposes `X-Trace-Id` on responses.
 - **OpenAPI 3.1**: `GET /openapi.json` + `GET /docs` (Swagger UI).
