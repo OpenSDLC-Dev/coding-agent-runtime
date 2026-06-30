@@ -1,7 +1,18 @@
-import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeConfig } from "../src/agent/config.js";
 import type { QueryFn } from "../src/agent/runtime.js";
 import { DEFAULT_BASH_ALLOWLIST } from "../src/permissions/bash-allowlist.js";
+
+// Drain a streaming-input prompt (AsyncIterable<SDKUserMessage>) into an array; returns [] for a string prompt.
+export async function drainPrompt(
+  prompt: string | AsyncIterable<SDKUserMessage> | undefined,
+): Promise<SDKUserMessage[]> {
+  const out: SDKUserMessage[] = [];
+  if (prompt && typeof prompt !== "string") {
+    for await (const m of prompt) out.push(m);
+  }
+  return out;
+}
 
 export const testConfig: RuntimeConfig = {
   anthropicApiKey: "sk-test",
@@ -25,6 +36,7 @@ export const testConfig: RuntimeConfig = {
   gcIntervalMs: 3_600_000,
   idempotencyTtlMs: 0,
   extensionsManifestPath: undefined,
+  maxBodyBytes: 12 * 1024 * 1024,
 };
 
 // Minimal message sequence for a successful single turn: init -> assistant(text + tool_use) -> user(tool_result) -> result(success)
@@ -161,15 +173,18 @@ export function fakeQueryFn(messages: SDKMessage[]): QueryFn {
 export function recordingQueryFn(messages: SDKMessage[] = []): {
   queryFn: QueryFn;
   captured: () => Options | undefined;
+  capturedPrompt: () => string | AsyncIterable<SDKUserMessage> | undefined;
 } {
   let captured: Options | undefined;
+  let capturedPrompt: string | AsyncIterable<SDKUserMessage> | undefined;
   const queryFn: QueryFn = (args) => {
     captured = args.options;
+    capturedPrompt = args.prompt;
     return (async function* () {
       for (const m of messages) yield m;
     })();
   };
-  return { queryFn, captured: () => captured };
+  return { queryFn, captured: () => captured, capturedPrompt: () => capturedPrompt };
 }
 
 // Read an app.request SSE response into an array of event names plus the raw text, to make assertions easier.

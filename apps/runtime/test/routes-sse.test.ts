@@ -12,6 +12,7 @@ import { SessionRegistry } from "../src/agent/session-store.js";
 import { registerSessionRoutes } from "../src/routes/sessions.js";
 import {
   collectSse,
+  drainPrompt,
   fakeQueryFn,
   partialMessages,
   recordingQueryFn,
@@ -163,6 +164,107 @@ describe("SSE routes", () => {
       body: JSON.stringify({ prompt: "again", outputFormat: { type: "json_schema", schema: 1 } }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("POST /sessions accepts multimodal content and streams it to query as one user message", async () => {
+    const { queryFn, capturedPrompt } = recordingQueryFn(sampleMessages);
+    const { app } = makeApp({ queryFn });
+    const content = [
+      { type: "text", text: "describe this image" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+    ];
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    expect(res.status).toBe(200);
+    await collectSse(res);
+    const msgs = await drainPrompt(capturedPrompt());
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({ type: "user", message: { role: "user", content } });
+  });
+
+  it("POST /sessions rejects a request with neither prompt nor content (400)", async () => {
+    const { app } = makeApp();
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /sessions rejects a request carrying both prompt and content (400)", async () => {
+    const { app } = makeApp();
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "hi", content: [{ type: "text", text: "x" }] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /sessions rejects invalid or oversize content (400)", async () => {
+    const { app } = makeApp();
+    const oversize = "A".repeat(10 * 1024 * 1024 + 1);
+    const cases: unknown[] = [
+      [], // empty array
+      [{ type: "audio", data: "x" }], // unknown block type
+      [{ type: "image", source: { type: "base64", media_type: "image/svg+xml", data: "AAAA" } }], // bad media type
+      [{ type: "image", source: { type: "url", url: "http://x" } }], // non-base64 source
+      [{ type: "text" }], // text block missing text
+      [{ type: "image", source: { type: "base64", media_type: "image/png", data: oversize } }], // oversize
+    ];
+    for (const content of cases) {
+      const res = await app.request("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("POST /sessions rejects more than 16 image blocks (400)", async () => {
+    const { app } = makeApp();
+    const content = Array.from({ length: 17 }, () => ({
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: "AA" },
+    }));
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /sessions accepts a text block alongside the max 16 images (server cap mirrors the web)", async () => {
+    const { app } = makeApp({ queryFn: fakeQueryFn(sampleMessages) });
+    const content = [
+      { type: "text", text: "describe these" },
+      ...Array.from({ length: 16 }, () => ({
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: "AA" },
+      })),
+    ];
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /sessions rejects an oversize request body with 413", async () => {
+    const { app } = makeApp({ config: { ...testConfig, maxBodyBytes: 200 } });
+    const res = await app.request("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "x".repeat(400) }),
+    });
+    expect(res.status).toBe(413);
   });
 
   it("forwards a /goal slash-command prompt through POST /sessions verbatim", async () => {

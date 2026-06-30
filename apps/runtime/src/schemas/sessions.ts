@@ -11,20 +11,44 @@ export const OutputFormat = z
   })
   .openapi("OutputFormat");
 
+// Multimodal content blocks (text + inline base64 image). An alternative to a plain `prompt`; runtime
+// validation lives in the route, this schema is for OpenAPI accuracy.
+export const ContentBlock = z
+  .discriminatedUnion("type", [
+    z.object({ type: z.literal("text"), text: z.string() }),
+    z.object({
+      type: z.literal("image"),
+      source: z.object({
+        type: z.literal("base64"),
+        media_type: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+        data: z.string(),
+      }),
+    }),
+  ])
+  .openapi("ContentBlock");
+
+// Exactly one of `prompt` (string) or `content` (multimodal blocks) must be present.
+const TurnInputShape = {
+  prompt: z.string().min(1).optional(),
+  content: z.array(ContentBlock).min(1).optional(),
+  model: z.string().optional(),
+  outputFormat: OutputFormat.optional(),
+};
+const exactlyOneInput = (b: { prompt?: string; content?: unknown[] }) =>
+  (b.prompt !== undefined) !== (b.content !== undefined);
+
 export const CreateSessionBody = z
   .object({
-    prompt: z.string().min(1).openapi({ example: "Create a hello.txt in /workspace" }),
-    model: z.string().optional().openapi({ example: "MiniMax-M3" }),
-    outputFormat: OutputFormat.optional(),
+    ...TurnInputShape,
+    prompt: TurnInputShape.prompt.openapi({ example: "Create a hello.txt in /workspace" }),
+    model: TurnInputShape.model.openapi({ example: "MiniMax-M3" }),
   })
+  .refine(exactlyOneInput, { message: "provide exactly one of prompt or content" })
   .openapi("CreateSessionBody");
 
 export const TurnBody = z
-  .object({
-    prompt: z.string().min(1),
-    model: z.string().optional(),
-    outputFormat: OutputFormat.optional(),
-  })
+  .object(TurnInputShape)
+  .refine(exactlyOneInput, { message: "provide exactly one of prompt or content" })
   .openapi("TurnBody");
 
 export const SessionListItem = z

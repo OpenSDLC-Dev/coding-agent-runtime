@@ -1,4 +1,4 @@
-import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query as defaultQuery } from "@anthropic-ai/claude-agent-sdk";
 import { isSpanContextValid, type Span, SpanStatusCode } from "@opentelemetry/api";
 import { applyExtensions, BASE_DISALLOWED_TOOLS } from "../extensions/compose.js";
@@ -23,16 +23,38 @@ export interface SseEvent {
   id?: string;
 }
 
-export type QueryFn = (args: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+// A prompt is either a plain string (single-message mode — the default) or a streaming AsyncIterable of
+// user messages (streaming-input mode — used only when a turn carries multimodal content).
+export type QueryFn = (args: {
+  prompt: string | AsyncIterable<SDKUserMessage>;
+  options: Options;
+}) => AsyncIterable<SDKMessage>;
+
+// A single multimodal content block accepted on a turn (text or an inline base64 image).
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 
 export interface RunTurnInput {
   prompt: string;
+  // Optional multimodal content blocks. When present, the turn runs in streaming-input mode and `prompt`
+  // is ignored; when absent, the plain `prompt` string is passed through unchanged (single-message mode).
+  content?: ContentBlock[];
   model?: string;
   resumeId?: string;
   abortController?: AbortController;
   // Opt-in structured outputs: a JSON-schema envelope forwarded to the SDK so the model returns
   // schema-conforming JSON on the final result. Non-perimeter (constrains output shape only).
   outputFormat?: NonNullable<Options["outputFormat"]>;
+}
+
+// Wrap multimodal content into the single streaming user message the SDK expects in streaming-input mode.
+async function* toUserMessageStream(content: ContentBlock[]): AsyncGenerator<SDKUserMessage> {
+  yield {
+    type: "user",
+    message: { role: "user", content },
+    parent_tool_use_id: null,
+  } as SDKUserMessage;
 }
 
 // Normalize process.env (whose values may be undefined) into the Record<string,string> that query() expects, then layer on runtime overrides.
@@ -192,8 +214,13 @@ export async function* runTurn(
     (timeout as { unref?: () => void }).unref?.();
   }
 
+  // Multimodal content ⇒ streaming-input mode (a one-message AsyncIterable). Otherwise pass the raw string
+  // straight through so the default path stays single-message mode (different CLI lifecycle), byte-for-byte.
+  const promptArg =
+    input.content && input.content.length > 0 ? toUserMessageStream(input.content) : input.prompt;
+
   try {
-    for await (const m of queryFn({ prompt: input.prompt, options })) {
+    for await (const m of queryFn({ prompt: promptArg, options })) {
       const evt = mapMessage(m);
       if (!evt) continue;
 

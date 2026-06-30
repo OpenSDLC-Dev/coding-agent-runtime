@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SpecPanel } from "./components/SpecPanel";
 import { type ConnState, Topbar } from "./components/Topbar";
 import { getConfig, getHealth, type RuntimeConfigDto, stopSession, streamTurn } from "./lib/api";
+import { buildContentBlocks, type ContentBlock, type ImageAttachment } from "./lib/content";
 import { uid } from "./lib/format";
 import { applyToolResults, type ToolResult } from "./lib/tool-result";
 import type {
@@ -37,7 +38,12 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
 };
 
 // --- message factories (keep the discriminated union tidy) ---
-const mkUser = (text: string): UserMessage => ({ id: uid(), kind: "user", text });
+const mkUser = (text: string, images?: string[]): UserMessage => ({
+  id: uid(),
+  kind: "user",
+  text,
+  ...(images && images.length > 0 ? { images } : {}),
+});
 const mkAssistant = (text: string): AssistantMessage => ({ id: uid(), kind: "assistant", text });
 const mkTool = (
   name: string,
@@ -200,6 +206,7 @@ export function App() {
   // ---- stream a turn against the live runtime ----
   async function runTurn(
     prompt: string,
+    content: ContentBlock[] | undefined,
     priorRealId: string | undefined,
     runner: { cancelled: boolean },
     isFirst: boolean,
@@ -208,7 +215,8 @@ export function App() {
     try {
       for await (const evt of streamTurn(baseUrl, {
         sessionId: priorRealId,
-        prompt,
+        prompt: content ? undefined : prompt,
+        content,
         model: model || undefined,
       })) {
         if (runner.cancelled) break;
@@ -325,21 +333,25 @@ export function App() {
     });
   }
 
-  function send(prompt: string) {
+  function send(prompt: string, images: ImageAttachment[] = []) {
     if (busy) return;
     const isFirst = active.messages.length === 0;
+    // With images, drive a multimodal `content` turn; otherwise the plain string prompt path is unchanged.
+    const content = images.length > 0 ? buildContentBlocks(prompt, images) : undefined;
+    const dataUrls = images.map((i) => i.dataUrl);
+    const title = prompt.trim() || (images.length > 0 ? `${images.length} image(s)` : "");
     updateActive((s) => ({
       ...s,
-      title: isFirst ? prompt.slice(0, 70) : s.title,
+      title: isFirst ? title.slice(0, 70) : s.title,
       created: isFirst ? "just now" : s.created,
       model: isFirst ? model || s.model : s.model,
       status: "running",
-      messages: [...s.messages, mkUser(prompt)],
+      messages: [...s.messages, mkUser(prompt, dataUrls)],
     }));
     setBusy(true);
     const runner = { cancelled: false };
     runnerRef.current = runner;
-    void runTurn(prompt, active.realId, runner, isFirst);
+    void runTurn(prompt, content, active.realId, runner, isFirst);
   }
 
   function stop() {

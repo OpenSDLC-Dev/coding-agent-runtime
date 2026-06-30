@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { Semaphore } from "../agent/concurrency.js";
 import type { RuntimeConfig } from "../agent/config.js";
 import { isModelAllowed } from "../agent/config.js";
 import type { IdempotencyStore } from "../agent/idempotency.js";
-import { type QueryFn, runTurn, type SseEvent } from "../agent/runtime.js";
+import { type ContentBlock, type QueryFn, runTurn, type SseEvent } from "../agent/runtime.js";
 import {
   extractChangedFiles,
   type SessionRecord,
@@ -60,8 +61,72 @@ export interface SessionRouteDeps {
 
 function readBody(
   c: Context,
-): Promise<{ prompt?: unknown; model?: unknown; outputFormat?: unknown }> {
+): Promise<{ prompt?: unknown; model?: unknown; outputFormat?: unknown; content?: unknown }> {
   return c.req.json().catch(() => ({}));
+}
+
+// Bounds on multimodal input. The request-body size is capped first by bodyLimit (config.maxBodyBytes,
+// a 413 before the body is buffered); these are the secondary per-content limits enforced in parseInput.
+// MAX_IMAGE_BLOCKS mirrors the web composer's MAX_IMAGES so the playground's pre-check matches the server.
+const MAX_IMAGE_BLOCKS = 16;
+const MAX_CONTENT_BLOCKS = 100; // overall array-length sanity bound (bodyLimit is the real byte guard)
+const MAX_CONTENT_BASE64_BYTES = 10 * 1024 * 1024; // ~10 MiB of base64 ≈ 7.5 MB binary
+const ALLOWED_IMAGE_MEDIA_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+// Resolve a turn's input to either a plain string prompt (single-message mode) or validated multimodal
+// content blocks (streaming-input mode). Exactly one of prompt / content must be present. Malformed or
+// oversize content → an error string the caller turns into a 400.
+function parseInput(body: {
+  prompt?: unknown;
+  content?: unknown;
+}): { prompt: string; content?: ContentBlock[] } | { error: string } {
+  const hasPrompt = typeof body.prompt === "string" && body.prompt.length > 0;
+  const hasContent = body.content !== undefined;
+  if (hasPrompt && hasContent) return { error: "provide either prompt or content, not both" };
+  if (!hasPrompt && !hasContent) return { error: "prompt or content is required" };
+  if (hasPrompt) return { prompt: body.prompt as string };
+
+  const raw = body.content;
+  if (!Array.isArray(raw) || raw.length === 0)
+    return { error: "content must be a non-empty array" };
+  if (raw.length > MAX_CONTENT_BLOCKS)
+    return { error: `content exceeds ${MAX_CONTENT_BLOCKS} blocks` };
+  const blocks: ContentBlock[] = [];
+  let base64Bytes = 0;
+  let imageCount = 0;
+  for (const b of raw) {
+    if (typeof b !== "object" || b === null)
+      return { error: "each content block must be an object" };
+    const type = (b as { type?: unknown }).type;
+    if (type === "text") {
+      const text = (b as { text?: unknown }).text;
+      if (typeof text !== "string") return { error: "a text block requires a string `text`" };
+      blocks.push({ type: "text", text });
+    } else if (type === "image") {
+      if (++imageCount > MAX_IMAGE_BLOCKS)
+        return { error: `content exceeds ${MAX_IMAGE_BLOCKS} images` };
+      const source = (b as { source?: unknown }).source;
+      if (typeof source !== "object" || source === null) {
+        return { error: "an image block requires a `source`" };
+      }
+      const s = source as { type?: unknown; media_type?: unknown; data?: unknown };
+      if (s.type !== "base64") return { error: "image source.type must be `base64`" };
+      if (typeof s.media_type !== "string" || !ALLOWED_IMAGE_MEDIA_TYPES.includes(s.media_type)) {
+        return { error: "unsupported image media_type" };
+      }
+      if (typeof s.data !== "string") return { error: "image source.data must be a base64 string" };
+      base64Bytes += s.data.length;
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: s.media_type, data: s.data },
+      });
+    } else {
+      return { error: "a content block type must be `text` or `image`" };
+    }
+  }
+  if (base64Bytes > MAX_CONTENT_BASE64_BYTES)
+    return { error: "content image data exceeds the size limit" };
+  return { prompt: "", content: blocks };
 }
 
 // Envelope-only validation for an opt-in structured-output request. Accepts { type: "json_schema",
@@ -105,6 +170,7 @@ async function streamTurn(
   c: Context,
   input: {
     prompt: string;
+    content?: ContentBlock[];
     model?: string;
     resumeId?: string;
     idempotencyKey?: string;
@@ -281,6 +347,18 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
   // One admission semaphore per server instance, sized by RUNTIME_MAX_CONCURRENT_TURNS (0 = unlimited).
   const sem = new Semaphore(config.maxConcurrentTurns);
 
+  // Reject an oversize request body with 413 BEFORE it is buffered (the turn endpoints accept base64 image
+  // content). 0 disables the limit. A no-op passthrough keeps the handler signatures uniform.
+  const limitBody: MiddlewareHandler =
+    config.maxBodyBytes > 0
+      ? bodyLimit({
+          maxSize: config.maxBodyBytes,
+          onError: (c) => c.json({ error: "request body too large" }, 413),
+        })
+      : async (_c, next) => {
+          await next();
+        };
+
   // ---- OpenAPI registration (SSE endpoints use registerPath to manually register the single-event payload) ----
   for (const path of ["/sessions", "/sessions/{id}/turns"]) {
     app.openAPIRegistry.registerPath({
@@ -322,10 +400,10 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
   }
 
   // ---- POST /sessions: first turn ----
-  app.post("/sessions", async (c) => {
+  app.post("/sessions", limitBody, async (c) => {
     const body = await readBody(c);
-    const prompt = typeof body.prompt === "string" ? body.prompt : "";
-    if (!prompt) return c.json({ error: "prompt is required" }, 400);
+    const inp = parseInput(body);
+    if ("error" in inp) return c.json({ error: inp.error }, 400);
     const model = typeof body.model === "string" ? body.model : undefined;
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
@@ -336,14 +414,20 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if ("duplicate" in idem) return idem.duplicate;
     return streamTurn(
       c,
-      { prompt, model, idempotencyKey: idem.key, outputFormat: of.outputFormat },
+      {
+        prompt: inp.prompt,
+        content: inp.content,
+        model,
+        idempotencyKey: idem.key,
+        outputFormat: of.outputFormat,
+      },
       deps,
       sem,
     );
   });
 
   // ---- POST /sessions/:id/turns: continuation ----
-  app.post("/sessions/:id/turns", async (c) => {
+  app.post("/sessions/:id/turns", limitBody, async (c) => {
     const id = c.req.param("id");
     if (!deps.registry.has(id)) {
       const info = deps.sdk.getSessionInfo
@@ -352,8 +436,8 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
       if (!info) return c.json({ error: "session not found" }, 404);
     }
     const body = await readBody(c);
-    const prompt = typeof body.prompt === "string" ? body.prompt : "";
-    if (!prompt) return c.json({ error: "prompt is required" }, 400);
+    const inp = parseInput(body);
+    if ("error" in inp) return c.json({ error: inp.error }, 400);
     const model = typeof body.model === "string" ? body.model : undefined;
     if (!isModelAllowed(model, config.allowedModels)) {
       return c.json({ error: `model not allowed: ${model}` }, 400);
@@ -364,7 +448,14 @@ export function registerSessionRoutes(app: OpenAPIHono, deps: SessionRouteDeps):
     if ("duplicate" in idem) return idem.duplicate;
     return streamTurn(
       c,
-      { prompt, model, resumeId: id, idempotencyKey: idem.key, outputFormat: of.outputFormat },
+      {
+        prompt: inp.prompt,
+        content: inp.content,
+        model,
+        resumeId: id,
+        idempotencyKey: idem.key,
+        outputFormat: of.outputFormat,
+      },
       deps,
       sem,
     );

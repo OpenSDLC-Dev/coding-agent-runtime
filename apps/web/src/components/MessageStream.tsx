@@ -35,6 +35,14 @@ function Bubble({ m, live }: { m: UserMessage | AssistantMessage; live?: boolean
     <div className={`msg-row ${isUser ? "user" : "assistant"}`}>
       {isUser ? <span className="avatar-sq user">DV</span> : <AgentAvatar />}
       <div className={`bubble ${isUser ? "user" : "assistant"}`}>
+        {isUser && m.kind === "user" && m.images && m.images.length > 0 ? (
+          <div className="bubble-images">
+            {m.images.map((src, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: attachments are append-only and never reordered
+              <img key={i} src={src} alt="attachment" />
+            ))}
+          </div>
+        ) : null}
         {richText(m.text)}
         {live ? <span className="cursor" /> : null}
       </div>
