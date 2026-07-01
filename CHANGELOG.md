@@ -14,6 +14,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-01 — Agent SDK alignment & SDK/CLI refresh
+
 ### Added
 
 - **Multimodal image input** via the Agent SDK's streaming-input mode. A turn request may now carry a `content` array of blocks — `{ "type": "text", "text": … }` and `{ "type": "image", "source": { "type": "base64", "media_type": "image/png|jpeg|gif|webp", "data": … } }` — instead of a plain `prompt` (exactly one of the two; both or neither → `400`). When `content` is present the runtime drives the SDK in streaming-input mode (a single user message); a plain `prompt` still takes the unchanged single-message path, byte-for-byte. Input is bounded at two layers: a request-body limit (`RUNTIME_MAX_BODY_BYTES`, default 12 MiB) rejects an oversize payload with `413` **before** the body is buffered, and per-content limits (≤16 image blocks — matching the web composer — and ≤10 MiB total base64) reject with `400`. The `apps/web` playground composer gains image attach (click-to-pick or drag-and-drop) with removable thumbnails, and renders attached images on the user message. Interactive approvals (`canUseTool` / `AskUserQuestion`) remain out of scope: they require a mid-turn request/response round-trip that the unidirectional SSE transport (and `bypassPermissions`) cannot serve; revisiting them would need a duplex transport or a defer-and-resume protocol. Aligns the runtime with the Agent SDK's [streaming-input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode) guidance.
@@ -190,7 +192,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Default the listen address to loopback (`127.0.0.1`) so the unauthenticated runtime is not silently exposed outside the container.
 - Run the agent in bypass-permissions mode, so the `disallowedTools` deny-list is the only built-in guardrail at this stage.
 
-[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/b5d47c6...HEAD
+[Unreleased]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/ba736c0...HEAD
+[0.10.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/b5d47c6...ba736c0
 [0.9.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8ab49cb...b5d47c6
 [0.8.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/9de19ce...8ab49cb
 [0.7.0]: https://github.com/OpenSDLC-Dev/coding-agent-runtime/compare/8113e5a...9de19ce
